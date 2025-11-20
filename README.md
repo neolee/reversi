@@ -12,6 +12,7 @@ Cross-platform Reversi with a Flet UI and pluggable engines.
 - Live scoreboard above the board shows running disc counts and declares the winner when play ends.
 - Sidebar controls include a Pass Turn button that becomes available when the human has no legal moves, enforcing the official rules.
 - `MinimaxEngine` uses Alpha-Beta pruning plus board cloning for strong play; `TrivialEngine` remains as a random baseline.
+- `RustReversiEngine` wraps the `rust-reversi` PyPI package for a deeper Alpha-Beta search implemented in Rust.
 
 
 ## Requirements
@@ -32,10 +33,11 @@ uv run main.py ui --size 8 --engine minimax --search-depth 3
 
 Engine switches:
 - `minimax` (default): Python engine with Alpha-Beta pruning. Tune strength with `--search-depth` (>=1).
+- `rust`: Alpha-Beta powered by the `rust-reversi` crate. Shares the `--search-depth` control (>=1) and currently targets 8x8 boards.
 - `trivial`: Random legal moves, useful for debugging GUI/protocol flows.
 
 
-Board size is adjustable with `--size` (defaults to 8). Both engines honor the configured dimensions.
+Board size is adjustable with `--size` (defaults to 8). Python engines honor any size; the Rust engine currently supports 8x8 only.
 
 
 ## Development Notes

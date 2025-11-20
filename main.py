@@ -9,9 +9,11 @@ import flet as ft
 from reversi.ui.app import ReversiApp
 from reversi.engine.minimax_engine import MinimaxEngine
 from reversi.engine.trivial_engine import TrivialEngine
+from reversi.engine.rust_engine import RustReversiEngine
 
 ENGINE_CHOICES = {
     "minimax": MinimaxEngine,
+    "rust": RustReversiEngine,
     "trivial": TrivialEngine,
 }
 
@@ -30,6 +32,9 @@ def build_engine(args):
         return TrivialEngine(board_size=args.size)
 
     search_depth = max(1, args.search_depth)
+    if engine_type == "rust":
+        return RustReversiEngine(board_size=args.size, search_depth=search_depth)
+
     return MinimaxEngine(board_size=args.size, search_depth=search_depth)
 
 def main():
@@ -49,7 +54,7 @@ def main():
         "--search-depth",
         type=int,
         default=3,
-        help="Search depth for minimax engine (default: 3)",
+        help="Search depth for minimax/rust engines (default: 3)",
     )
     ui_parser.set_defaults(func=run_ui)
 

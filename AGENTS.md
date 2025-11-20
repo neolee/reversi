@@ -38,10 +38,10 @@ Develop a cross-platform Reversi game featuring a clean GUI and a powerful AI en
 
 ## Current Status
 - **UI**: Flet GUI with responsive board sizing, polished pieces, marker-based valid-move highlights, live score readouts, and undo/pass-aware turn handling.
-- **Engine**: `MinimaxEngine` evaluates positions with Alpha-Beta (tunable depth); `TrivialEngine` provides a random baseline.
+- **Engine**: `MinimaxEngine` evaluates positions with Alpha-Beta (tunable depth); `TrivialEngine` provides a random baseline; `RustReversiEngine` wraps the Rust implementation for deeper searches.
 - **Protocol**: Text-based command set (INIT/NEWGAME/PLAY/GENMOVE/VALID_MOVES/PASS/UNDO/BOARD/RESULT) implemented under `src/reversi/protocol`.
-- **Entry Point**: `main.py` CLI supports `--engine` (minimax/trivial) and `--search-depth` flags for UI sessions.
-- **Dependencies**: `flet` declared in `pyproject.toml`.
+- **Entry Point**: `main.py` CLI supports `--engine` (minimax/rust/trivial) and `--search-depth` flags for UI sessions (depth applies to minimax and rust).
+- **Dependencies**: `flet` and `rust-reversi` declared in `pyproject.toml`.
 
 
 ## Design Decisions
