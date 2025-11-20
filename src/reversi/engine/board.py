@@ -143,3 +143,10 @@ class Board:
         c = ord(coord[0].upper()) - 65
         r = int(coord[1:]) - 1
         return r, c
+
+    def clone(self) -> "Board":
+        copied = Board(self.size)
+        copied.grid = [row[:] for row in self.grid]
+        copied.current_player = self.current_player
+        copied.history = []
+        return copied

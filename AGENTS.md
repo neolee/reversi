@@ -31,9 +31,9 @@ Develop a cross-platform Reversi game featuring a clean GUI and a powerful AI en
 
 ## Current Status
 - **UI**: Flet GUI with responsive board sizing, polished pieces, and marker-based valid-move highlights (human + AI undo flow handled).
-- **Engine**: `LocalEngine` enforces rules and drives a Random AI; Minimax/Alpha-Beta pending.
+- **Engine**: `LocalEngine` now evaluates positions with Minimax + Alpha-Beta (tunable depth); `TrivialEngine` provides a random baseline.
 - **Protocol**: Text-based command set (INIT/NEWGAME/PLAY/GENMOVE/UNDO/BOARD/VALID_MOVES/RESULT) implemented under `src/reversi/protocol`.
-- **Entry Point**: `main.py` provides CLI (`uv run main.py ui --size 8`).
+- **Entry Point**: `main.py` CLI supports `--engine` (minimax/trivial) and `--search-depth` flags for UI sessions.
 - **Dependencies**: `flet` declared in `pyproject.toml`.
 
 ## Design Decisions
@@ -46,3 +46,4 @@ Develop a cross-platform Reversi game featuring a clean GUI and a powerful AI en
 - Valid moves are indicated with stacked glow markers (no border changes) and are cleared immediately once the human plays.
 - Undo button issues two `UNDO` commands when needed so human turns always resume correctly in Human vs AI mode.
 - Log pane autoscrolls and only re-renders itself for new messages to limit UI churn.
+- CLI defaults to the Minimax engine but can swap to the trivial random engine via `--engine trivial`; `--search-depth` controls AI strength.
