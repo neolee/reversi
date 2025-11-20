@@ -1,3 +1,5 @@
+import asyncio
+
 import flet as ft
 from reversi.protocol.interface import EngineInterface
 from reversi.protocol.constants import Command, Response
@@ -12,6 +14,7 @@ class ReversiApp:
         self.board_cells = {} # Map coord -> Container
         self.cell_containers = {} # Map coord -> Cell Container (for highlighting)
         self.cell_base_colors = {}
+        self.highlight_markers = {}
         self.current_turn = "BLACK" # Track whose turn it is for simple UI updates
         self.human_color = "BLACK" # Default human color
         self.ai_color = "WHITE"
@@ -20,6 +23,7 @@ class ReversiApp:
         self.board_wrapper = None
         self.cell_size = 60
         self.board_padding = 24
+        self._last_viewport = (None, None)
 
     def main(self, page: ft.Page):
         self.page = page
@@ -28,7 +32,6 @@ class ReversiApp:
         page.window.width = 1000
         page.window.height = 800
         page.padding = 20
-        setattr(page, "on_resize", self.on_page_resize)
 
         # Log Area
         log_container = ft.Container(
@@ -94,7 +97,7 @@ class ReversiApp:
             )
         )
 
-        board_area = ft.Container(
+        self.board_area = ft.Container(
             content=self.board_wrapper,
             alignment=ft.alignment.center,
             expand=True,
@@ -107,13 +110,14 @@ class ReversiApp:
                 [
                     self.sidebar,
                     ft.VerticalDivider(width=1),
-                    board_area
+                    self.board_area
                 ],
                 expand=True,
                 vertical_alignment=ft.CrossAxisAlignment.STRETCH
             )
         )
 
+        page.update()
         self.adjust_board_size()
 
         self.reset_board_ui() # Initialize starting position
@@ -124,6 +128,8 @@ class ReversiApp:
         
         # Auto-start new game
         self.on_new_game(None)
+
+        page.run_task(self._monitor_viewport)
 
     def on_color_change(self, e):
         self.human_color = e.control.value
@@ -146,8 +152,29 @@ class ReversiApp:
                     bgcolor=None,
                 )
 
+                marker_size = max(12, int(self.cell_size * 0.5))
+                marker = ft.Container(
+                    width=marker_size,
+                    height=marker_size,
+                    border_radius=marker_size / 2,
+                    bgcolor="rgba(235,235,235,0.88)",
+                    shadow=ft.BoxShadow(
+                        blur_radius=10,
+                        spread_radius=1,
+                        color="rgba(255,255,255,0.55)",
+                        offset=ft.Offset(0, 0)
+                    ),
+                    opacity=0,
+                    animate_opacity=300
+                )
+
+                stack = ft.Stack(
+                    [piece, marker],
+                    alignment=ft.alignment.center
+                )
+
                 cell = ft.Container(
-                    content=piece,
+                    content=stack,
                     width=self.cell_size,
                     height=self.cell_size,
                     bgcolor=base_color,
@@ -160,35 +187,43 @@ class ReversiApp:
                 self.board_cells[coord] = piece
                 self.cell_containers[coord] = cell
                 self.cell_base_colors[coord] = base_color
+                self.highlight_markers[coord] = marker
                 row_controls.append(cell)
             rows.append(ft.Row(row_controls, spacing=0, tight=True))
         return ft.Column(rows, spacing=0)
 
-    def on_page_resize(self, e):
-        self.adjust_board_size()
-
-    def adjust_board_size(self):
+    def adjust_board_size(self, width: float | None = None, height: float | None = None):
         if not getattr(self, "page", None) or not self.board_wrapper:
             return
 
-        page_window = getattr(self.page, "window", None)
-        page_width = self.page.width or getattr(self.page, "window_width", None)
-        page_height = self.page.height or getattr(self.page, "window_height", None)
-        if page_window is not None:
-            page_width = page_width or getattr(page_window, "width", None)
-            page_height = page_height or getattr(page_window, "height", None)
-        if not page_width or not page_height:
+        if width is None:
+            width = getattr(self.page, "window_width", None) or self.page.width
+        if height is None:
+            height = getattr(self.page, "window_height", None) or self.page.height
+        if width is None or height is None:
             return
 
+        prev_w, prev_h = self._last_viewport
+        if prev_w == width and prev_h == height:
+            return
+        self._last_viewport = (width, height)
+
         sidebar_width = float(self.sidebar.width or 0)
-        available_width = max(200.0, float(page_width) - sidebar_width - 80)
-        available_height = max(200.0, float(page_height) - 120)
+        available_width = max(200.0, float(width) - sidebar_width - 80)
+        available_height = max(200.0, float(height) - 120)
         board_pixel = min(available_width, available_height)
         usable_space = max(100.0, board_pixel - 2 * self.board_padding)
-        self.cell_size = max(32.0, usable_space / self.board_size)
+        new_cell_size = max(32.0, usable_space / self.board_size)
 
+        current_width = float(self.board_wrapper.width or 0)
+        current_height = float(self.board_wrapper.height or 0)
+        if abs(new_cell_size - self.cell_size) < 0.5 and abs(current_width - board_pixel) < 0.5 and abs(current_height - board_pixel) < 0.5:
+            return
+
+        self.cell_size = new_cell_size
         self.board_wrapper.width = board_pixel
         self.board_wrapper.height = board_pixel
+        self.board_wrapper.update()
         self.apply_cell_size()
 
     def apply_cell_size(self):
@@ -203,9 +238,27 @@ class ReversiApp:
             piece.width = piece_size
             piece.height = piece_size
             piece.border_radius = piece_size / 2
+            marker = self.highlight_markers.get(coord)
+            if marker:
+                marker_size = max(12, int(self.cell_size * 0.5))
+                marker.width = marker_size
+                marker.height = marker_size
+                marker.border_radius = marker_size / 2
 
         if self.board_grid:
             self.board_grid.update()
+
+    async def _monitor_viewport(self):
+        await asyncio.sleep(0.2)
+        prev_w, prev_h = self._last_viewport
+        while True:
+            current_w = getattr(self.page, "window_width", None) or self.page.width
+            current_h = getattr(self.page, "window_height", None) or self.page.height
+            if current_w and current_h:
+                if current_w != prev_w or current_h != prev_h:
+                    self.adjust_board_size(current_w, current_h)
+                    prev_w, prev_h = current_w, current_h
+            await asyncio.sleep(0.25)
 
     def update_piece(self, coord, color):
         if coord in self.board_cells:
@@ -249,22 +302,20 @@ class ReversiApp:
             cell.border = ft.border.all(1, "black")
             cell.bgcolor = self.cell_base_colors.get(coord, "#1B5E20")
             cell.shadow = None
+            marker = self.highlight_markers.get(coord)
+            if marker:
+                marker.opacity = 0
+                marker.update()
             cell.update()
         
         # Highlight valid moves
         for coord in moves:
             if coord in self.cell_containers:
-                highlight_width = max(2, int(self.cell_size * 0.06))
-                cell = self.cell_containers[coord]
-                cell.border = ft.border.all(highlight_width, "#f1c40f")
-                cell.bgcolor = "#5f8d3a"
-                cell.shadow = ft.BoxShadow(
-                    blur_radius=18,
-                    spread_radius=1,
-                    color="rgba(241,196,15,0.35)",
-                    offset=ft.Offset(0, 0)
-                )
-                cell.update()
+                marker = self.highlight_markers.get(coord)
+                if marker:
+                    marker.opacity = 1
+                    marker.update()
+                self.cell_containers[coord].update()
 
     def reset_board_ui(self):
         # Clear all
@@ -398,4 +449,6 @@ class ReversiApp:
             return
 
         self.log(f"GUI: Clicked {coord}")
+        # Clear highlights immediately so the newly placed stone doesn't overlap
+        self.highlight_valid_moves([])
         self.engine.send_command(f"{Command.PLAY} {coord}")
