@@ -57,3 +57,9 @@ Develop a cross-platform Reversi game featuring a clean GUI and a powerful AI en
 - Log pane autoscrolls and only re-renders itself for new messages to limit UI churn.
 - Pass button activates only when the human has no legal moves and sends `PASS <color>`; engines also auto-pass when they are out of moves, leading to a `RESULT` once both colors are stuck.
 - Live scoreboard above the board reflects disc counts in real time and states the winner when the game concludes.
+
+## TODO
+- Implement save/load/replay flows with a human-editable format.
+- Design engine-vs-engine workflows: define CLI support (batch runs, match recording), clarify if/when the UI should visualize engine bouts, and outline the GUI changes needed for automated battles.
+- More options on GUI (engine, search depth, board size) and CLI (headless mode, engine-vs-engine).
+- Explore auxiliary tooling such as visualizing engine analysis data to aid debugging and teaching.
