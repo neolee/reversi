@@ -7,11 +7,11 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 
 import flet as ft
 from reversi.ui.app import ReversiApp
-from reversi.engine.local_engine import LocalEngine
+from reversi.engine.minimax_engine import MinimaxEngine
 from reversi.engine.trivial_engine import TrivialEngine
 
 ENGINE_CHOICES = {
-    "minimax": LocalEngine,
+    "minimax": MinimaxEngine,
     "trivial": TrivialEngine,
 }
 
@@ -30,7 +30,7 @@ def build_engine(args):
         return TrivialEngine(board_size=args.size)
 
     search_depth = max(1, args.search_depth)
-    return LocalEngine(board_size=args.size, search_depth=search_depth)
+    return MinimaxEngine(board_size=args.size, search_depth=search_depth)
 
 def main():
     parser = argparse.ArgumentParser(description="Reversi Game CLI")

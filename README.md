@@ -11,8 +11,7 @@ Cross-platform Reversi with a Flet UI and pluggable engines.
 - Text protocol (INIT/NEWGAME/PLAY/GENMOVE/UNDO/BOARD/VALID_MOVES/RESULT/PASS) between UI and engines.
 - Live scoreboard above the board shows running disc counts and declares the winner when play ends.
 - Sidebar controls include a Pass Turn button that becomes available when the human has no legal moves, enforcing the official rules.
-- `LocalEngine` now uses Minimax with Alpha-Beta pruning and board cloning for stronger AI play.
-- `TrivialEngine` provides a baseline random mover for quick regressions and demos.
+- `MinimaxEngine` uses Alpha-Beta pruning plus board cloning for strong play; `TrivialEngine` remains as a random baseline.
 
 
 ## Requirements

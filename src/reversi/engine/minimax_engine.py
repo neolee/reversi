@@ -5,7 +5,7 @@ from reversi.engine.base_engine import BaseEngine
 from reversi.engine.board import Board
 
 
-class LocalEngine(BaseEngine):
+class MinimaxEngine(BaseEngine):
     def __init__(self, board_size: int = 8, search_depth: int = 3, think_delay: float = 0.2):
         super().__init__(board_size=board_size, think_delay=think_delay)
         self.search_depth = search_depth

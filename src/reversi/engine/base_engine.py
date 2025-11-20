@@ -11,7 +11,7 @@ from reversi.engine.board import Board
 
 
 class BaseEngine(EngineInterface, ABC):
-    """Shared command handling and board bookkeeping for local engines."""
+    """Shared command handling and board bookkeeping for engines."""
 
     def __init__(self, board_size: int = 8, think_delay: float = 0.2):
         super().__init__()
