@@ -297,25 +297,16 @@ class ReversiApp:
             piece.update()
 
     def highlight_valid_moves(self, moves):
-        # Reset all highlights first
+        move_set = set(moves)
         for coord, cell in self.cell_containers.items():
             cell.border = ft.border.all(1, "black")
             cell.bgcolor = self.cell_base_colors.get(coord, "#1B5E20")
             cell.shadow = None
             marker = self.highlight_markers.get(coord)
             if marker:
-                marker.opacity = 0
-                marker.update()
-            cell.update()
-        
-        # Highlight valid moves
-        for coord in moves:
-            if coord in self.cell_containers:
-                marker = self.highlight_markers.get(coord)
-                if marker:
-                    marker.opacity = 1
-                    marker.update()
-                self.cell_containers[coord].update()
+                marker.opacity = 1 if coord in move_set else 0
+        if self.board_grid:
+            self.board_grid.update()
 
     def reset_board_ui(self):
         # Clear all
@@ -341,7 +332,7 @@ class ReversiApp:
     def log(self, message: str):
         self.log_view.controls.append(ft.Text(message, font_family="monospace", size=10))
         self.log_view.scroll_to(offset=-1, duration=100) # Auto scroll to bottom
-        self.page.update()
+        self.log_view.update()
 
     def handle_engine_message(self, message: str):
         self.log(f"Engine: {message}")
@@ -349,13 +340,7 @@ class ReversiApp:
         parts = message.split()
         cmd = parts[0]
 
-        if cmd == Response.MOVE:
-            # MOVE <coord>
-            # Engine made a move. Board update will follow usually, or we request it.
-            # But our engine sends BOARD update after move automatically now.
-            pass
-
-        elif cmd == Response.BOARD:
+        if cmd == Response.BOARD:
             # BOARD <size> <current_player> <state_string>
             if len(parts) > 3:
                 size = int(parts[1])
@@ -417,12 +402,6 @@ class ReversiApp:
         self.game_started = True
         self.reset_board_ui()
         self.engine.send_command(Command.NEWGAME)
-        
-        # If AI is Black (First), we need to trigger it.
-        # But NEWGAME response is OK. Engine doesn't send BOARD automatically on NEWGAME usually?
-        # Let's check LocalEngine. It sends OK then emit_board_update.
-        # So handle_engine_message will get BOARD and trigger the loop.
-        pass
 
     def on_undo(self, e):
         self.log("GUI: Sending UNDO")
