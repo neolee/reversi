@@ -78,6 +78,13 @@ class LocalEngine(EngineInterface):
         elif cmd == Command.BOARD:
             self._emit_board_update()
 
+        elif cmd == Command.VALID_MOVES:
+            # VALID_MOVES [color]
+            color = parts[1] if len(parts) > 1 else self.board.current_player
+            moves = self.board.get_valid_moves(color)
+            moves_str = " ".join([self.board.coord_to_str(r, c) for r, c in moves])
+            self._emit(f"{Response.VALID_MOVES} {moves_str}")
+
     def _ai_move(self, color: str):
         # Simulate thinking
         time.sleep(0.5)
@@ -121,7 +128,7 @@ class LocalEngine(EngineInterface):
                 pass
 
     def _emit_board_update(self):
-        # Format: BOARD <size> <state_string>
+        # Format: BOARD <size> <current_player> <state_string>
         # state_string: row by row, . for empty, B for Black, W for White
         state = []
         for r in range(self.board_size):
@@ -134,4 +141,4 @@ class LocalEngine(EngineInterface):
                 else:
                     state.append(".")
         state_str = "".join(state)
-        self._emit(f"{Response.BOARD} {self.board_size} {state_str}")
+        self._emit(f"{Response.BOARD} {self.board_size} {self.board.current_player} {state_str}")

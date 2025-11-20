@@ -10,58 +10,125 @@ class ReversiApp:
         self.log_view = ft.Column(scroll=ft.ScrollMode.ALWAYS, height=200)
         self.board_grid = None
         self.board_cells = {} # Map coord -> Container
+        self.cell_containers = {} # Map coord -> Cell Container (for highlighting)
+        self.cell_base_colors = {}
         self.current_turn = "BLACK" # Track whose turn it is for simple UI updates
+        self.human_color = "BLACK" # Default human color
+        self.ai_color = "WHITE"
+        self.game_started = False
+        self.undo_expect_updates = 0 # Counter to suppress auto-moves during undo sequence
+        self.board_wrapper = None
+        self.cell_size = 60
+        self.board_padding = 24
 
     def main(self, page: ft.Page):
         self.page = page
         page.title = "Reversi"
         page.theme_mode = ft.ThemeMode.LIGHT
-        page.window.width = 800
+        page.window.width = 1000
         page.window.height = 800
-
-        # Header
-        header = ft.Row(
-            [
-                ft.Text("Reversi", size=30, weight=ft.FontWeight.BOLD),
-                ft.ElevatedButton("New Game", on_click=self.on_new_game),
-                ft.ElevatedButton("Undo", on_click=self.on_undo),
-                ft.ElevatedButton("AI Move", on_click=self.on_gen_move),
-            ],
-            alignment=ft.MainAxisAlignment.SPACE_BETWEEN
-        )
-
-        # Board
-        self.board_grid = self.create_board()
+        page.padding = 20
+        setattr(page, "on_resize", self.on_page_resize)
 
         # Log Area
         log_container = ft.Container(
             content=self.log_view,
             border=ft.border.all(1, "grey400"),
             border_radius=5,
+            padding=5,
+            expand=True,
+            bgcolor="grey100"
+        )
+        
+        # Sidebar
+        self.sidebar = ft.Container(
+            content=ft.Column(
+                [
+                    ft.Text("Reversi", size=30, weight=ft.FontWeight.BOLD),
+                    ft.Divider(),
+                    ft.Text("Game Settings", size=20, weight=ft.FontWeight.BOLD),
+                    ft.RadioGroup(
+                        content=ft.Column([
+                            ft.Radio(value="BLACK", label="Play as Black (First)"),
+                            ft.Radio(value="WHITE", label="Play as White (Second)")
+                        ]),
+                        on_change=self.on_color_change,
+                        value="BLACK"
+                    ),
+                    ft.ElevatedButton("Start New Game", on_click=self.on_new_game, width=200),
+                    ft.Divider(),
+                    ft.Text("Controls", size=20, weight=ft.FontWeight.BOLD),
+                    ft.ElevatedButton("Undo", on_click=self.on_undo, width=200),
+                    ft.Divider(),
+                    ft.Text("Engine Log", size=16, weight=ft.FontWeight.BOLD),
+                    log_container
+                ],
+                spacing=10,
+                expand=True
+            ),
+            width=300,
             padding=10,
-            expand=True
+            bgcolor="grey50"
+        )
+
+        # Board Area
+        self.board_grid = self.create_board()
+        initial_board_size = self.board_size * self.cell_size + self.board_padding * 2
+        self.board_wrapper = ft.Container(
+            content=self.board_grid,
+            width=initial_board_size,
+            height=initial_board_size,
+            padding=self.board_padding,
+            alignment=ft.alignment.center,
+            border_radius=24,
+            gradient=ft.LinearGradient(
+                begin=ft.alignment.top_left,
+                end=ft.alignment.bottom_right,
+                colors=["#0f3d14", "#145a1e"]
+            ),
+            shadow=ft.BoxShadow(
+                blur_radius=25,
+                spread_radius=2,
+                color="rgba(0,0,0,0.25)",
+                offset=ft.Offset(0, 12)
+            )
+        )
+
+        board_area = ft.Container(
+            content=self.board_wrapper,
+            alignment=ft.alignment.center,
+            expand=True,
+            bgcolor="grey200"
         )
 
         # Layout
         page.add(
-            ft.Column(
+            ft.Row(
                 [
-                    header,
-                    ft.Divider(),
-                    ft.Row([self.board_grid], alignment=ft.MainAxisAlignment.CENTER),
-                    ft.Divider(),
-                    ft.Text("Protocol Log:"),
-                    log_container
+                    self.sidebar,
+                    ft.VerticalDivider(width=1),
+                    board_area
                 ],
-                expand=True
+                expand=True,
+                vertical_alignment=ft.CrossAxisAlignment.STRETCH
             )
         )
 
-        self.reset_board_ui() # Initialize starting position - NOW SAFE TO CALL
+        self.adjust_board_size()
+
+        self.reset_board_ui() # Initialize starting position
 
         # Start Engine
         self.engine.start()
         self.log("System: Engine started")
+        
+        # Auto-start new game
+        self.on_new_game(None)
+
+    def on_color_change(self, e):
+        self.human_color = e.control.value
+        self.ai_color = "WHITE" if self.human_color == "BLACK" else "BLACK"
+        self.log(f"Settings: Human is {self.human_color}")
 
     def create_board(self):
         # Grid
@@ -70,20 +137,20 @@ class ReversiApp:
             row_controls = []
             for c in range(self.board_size):
                 coord = f"{chr(65+c)}{r+1}"
-
-                # Piece container (circle)
+                piece_size = int(self.cell_size * 0.72)
+                base_color = "#1B5E20" if (r + c) % 2 == 0 else "#215732"
                 piece = ft.Container(
-                    width=40,
-                    height=40,
-                    border_radius=20,
-                    bgcolor=None, # Transparent initially
+                    width=piece_size,
+                    height=piece_size,
+                    border_radius=piece_size / 2,
+                    bgcolor=None,
                 )
 
                 cell = ft.Container(
                     content=piece,
-                    width=50,
-                    height=50,
-                    bgcolor="green700",
+                    width=self.cell_size,
+                    height=self.cell_size,
+                    bgcolor=base_color,
                     border=ft.border.all(1, "black"),
                     on_click=lambda e, coord=coord: self.on_board_click(coord),
                     alignment=ft.alignment.center,
@@ -91,31 +158,124 @@ class ReversiApp:
                 )
 
                 self.board_cells[coord] = piece
+                self.cell_containers[coord] = cell
+                self.cell_base_colors[coord] = base_color
                 row_controls.append(cell)
-            rows.append(ft.Row(row_controls, spacing=0))
+            rows.append(ft.Row(row_controls, spacing=0, tight=True))
         return ft.Column(rows, spacing=0)
+
+    def on_page_resize(self, e):
+        self.adjust_board_size()
+
+    def adjust_board_size(self):
+        if not getattr(self, "page", None) or not self.board_wrapper:
+            return
+
+        page_window = getattr(self.page, "window", None)
+        page_width = self.page.width or getattr(self.page, "window_width", None)
+        page_height = self.page.height or getattr(self.page, "window_height", None)
+        if page_window is not None:
+            page_width = page_width or getattr(page_window, "width", None)
+            page_height = page_height or getattr(page_window, "height", None)
+        if not page_width or not page_height:
+            return
+
+        sidebar_width = float(self.sidebar.width or 0)
+        available_width = max(200.0, float(page_width) - sidebar_width - 80)
+        available_height = max(200.0, float(page_height) - 120)
+        board_pixel = min(available_width, available_height)
+        usable_space = max(100.0, board_pixel - 2 * self.board_padding)
+        self.cell_size = max(32.0, usable_space / self.board_size)
+
+        self.board_wrapper.width = board_pixel
+        self.board_wrapper.height = board_pixel
+        self.apply_cell_size()
+
+    def apply_cell_size(self):
+        if not self.board_cells:
+            return
+
+        piece_size = max(12, int(self.cell_size * 0.72))
+        for coord, cell in self.cell_containers.items():
+            cell.width = self.cell_size
+            cell.height = self.cell_size
+            piece = self.board_cells[coord]
+            piece.width = piece_size
+            piece.height = piece_size
+            piece.border_radius = piece_size / 2
+
+        if self.board_grid:
+            self.board_grid.update()
 
     def update_piece(self, coord, color):
         if coord in self.board_cells:
             piece = self.board_cells[coord]
             if color == "BLACK":
-                piece.bgcolor = "black"
+                piece.bgcolor = "#0f0f0f"
+                piece.gradient = ft.RadialGradient(
+                    radius=1.2,
+                    colors=["#2f2f2f", "#060606"]
+                )
+                piece.border = ft.border.all(1, "#4f4f4f")
+                piece.shadow = ft.BoxShadow(
+                    blur_radius=20,
+                    spread_radius=1,
+                    color="rgba(0,0,0,0.55)",
+                    offset=ft.Offset(0, 6)
+                )
             elif color == "WHITE":
-                piece.bgcolor = "white"
+                piece.bgcolor = "#f4f4f4"
+                piece.gradient = ft.RadialGradient(
+                    radius=1.2,
+                    colors=["#ffffff", "#d5d5d5"]
+                )
+                piece.border = ft.border.all(1, "#c5c5c5")
+                piece.shadow = ft.BoxShadow(
+                    blur_radius=16,
+                    spread_radius=1,
+                    color="rgba(0,0,0,0.35)",
+                    offset=ft.Offset(0, 4)
+                )
             else:
                 piece.bgcolor = None
+                piece.gradient = None
+                piece.border = None
+                piece.shadow = None
             piece.update()
+
+    def highlight_valid_moves(self, moves):
+        # Reset all highlights first
+        for coord, cell in self.cell_containers.items():
+            cell.border = ft.border.all(1, "black")
+            cell.bgcolor = self.cell_base_colors.get(coord, "#1B5E20")
+            cell.shadow = None
+            cell.update()
+        
+        # Highlight valid moves
+        for coord in moves:
+            if coord in self.cell_containers:
+                highlight_width = max(2, int(self.cell_size * 0.06))
+                cell = self.cell_containers[coord]
+                cell.border = ft.border.all(highlight_width, "#f1c40f")
+                cell.bgcolor = "#5f8d3a"
+                cell.shadow = ft.BoxShadow(
+                    blur_radius=18,
+                    spread_radius=1,
+                    color="rgba(241,196,15,0.35)",
+                    offset=ft.Offset(0, 0)
+                )
+                cell.update()
 
     def reset_board_ui(self):
         # Clear all
         for coord in self.board_cells:
             self.update_piece(coord, None)
+        
+        # Clear highlights
+        self.highlight_valid_moves([])
 
         # Initial position (center 4 pieces)
         mid = self.board_size // 2
-        # Coordinates are 1-based, so mid is the lower index of the center pair
-        # e.g. size 8, mid=4. Center is (4,4), (5,5), (4,5), (5,4) -> D4, E5, D5, E4
-
         c1 = chr(65 + mid - 1) # D
         c2 = chr(65 + mid)     # E
         r1 = mid               # 4
@@ -128,7 +288,8 @@ class ReversiApp:
         self.current_turn = "BLACK"
 
     def log(self, message: str):
-        self.log_view.controls.append(ft.Text(message, font_family="monospace"))
+        self.log_view.controls.append(ft.Text(message, font_family="monospace", size=10))
+        self.log_view.scroll_to(offset=-1, duration=100) # Auto scroll to bottom
         self.page.update()
 
     def handle_engine_message(self, message: str):
@@ -139,24 +300,48 @@ class ReversiApp:
 
         if cmd == Response.MOVE:
             # MOVE <coord>
-            if len(parts) > 1:
-                coord = parts[1]
-                # For now, just place the piece for the current turn
-                # In a real app, we need to know whose turn it is or get full board state
-                self.update_piece(coord, self.current_turn)
-                self.toggle_turn()
+            # Engine made a move. Board update will follow usually, or we request it.
+            # But our engine sends BOARD update after move automatically now.
+            pass
 
         elif cmd == Response.BOARD:
-            # BOARD <size> <state_string>
-            if len(parts) > 2:
+            # BOARD <size> <current_player> <state_string>
+            if len(parts) > 3:
                 size = int(parts[1])
-                state_str = parts[2]
+                current_player = parts[2]
+                state_str = parts[3]
+                self.current_turn = current_player
                 self.update_board_from_state(size, state_str)
+                
+                # Handle Undo Sequence
+                if self.undo_expect_updates > 0:
+                    self.undo_expect_updates -= 1
+                    if self.undo_expect_updates > 0:
+                        self.log("System: Waiting for second undo...")
+                        return
+                    # If we finished undoing, we fall through to normal logic
+                    # which will trigger VALID_MOVES for human or GENMOVE for AI
+                
+                # Game Logic Loop
+                if self.game_started:
+                    if self.current_turn == self.ai_color:
+                        # AI's turn
+                        self.log("System: AI Turn, requesting move...")
+                        self.engine.send_command(f"{Command.GENMOVE} {self.ai_color}")
+                    else:
+                        # Human's turn
+                        self.log("System: Human Turn, requesting valid moves...")
+                        self.engine.send_command(f"{Command.VALID_MOVES} {self.human_color}")
 
-        elif cmd == Response.OK:
-            # If we just sent a PLAY command, we should update the board too
-            # But for now, let's assume the engine sends MOVE back or we update optimistically
-            pass
+        elif cmd == Response.VALID_MOVES:
+            # VALID_MOVES <c1> <c2> ...
+            moves = parts[1:]
+            self.highlight_valid_moves(moves)
+            
+        elif cmd == Response.RESULT:
+            winner = parts[1]
+            self.log(f"GAME OVER: Winner is {winner}")
+            self.game_started = False
 
     def update_board_from_state(self, size: int, state_str: str):
         if size != self.board_size:
@@ -175,36 +360,42 @@ class ReversiApp:
                         self.update_piece(coord, "WHITE")
                     else:
                         self.update_piece(coord, None)
-        
-        # Update turn based on piece count? Or engine should tell us.
-        # For now, let's just rely on the fact that if we got a board update,
-        # it's likely after a move, so we might need to sync turn.
-        # But simple piece counting works for Reversi to determine turn if needed,
-        # or we just wait for next event.
-        pass
-
-        # elif cmd == Response.NEWGAME: # Or if we reset
-        #      self.reset_board_ui()
-
-    def toggle_turn(self):
-        self.current_turn = "WHITE" if self.current_turn == "BLACK" else "BLACK"
 
     def on_new_game(self, e):
-        self.log("GUI: Sending NEWGAME")
+        self.log("GUI: Starting New Game...")
+        self.game_started = True
         self.reset_board_ui()
         self.engine.send_command(Command.NEWGAME)
+        
+        # If AI is Black (First), we need to trigger it.
+        # But NEWGAME response is OK. Engine doesn't send BOARD automatically on NEWGAME usually?
+        # Let's check LocalEngine. It sends OK then emit_board_update.
+        # So handle_engine_message will get BOARD and trigger the loop.
+        pass
 
     def on_undo(self, e):
         self.log("GUI: Sending UNDO")
-        self.engine.send_command(Command.UNDO)
-
-    def on_gen_move(self, e):
-        self.log("GUI: Sending GENMOVE")
-        self.engine.send_command(Command.GENMOVE)
+        
+        # Determine how many undos we need
+        # If playing against AI and it's Human's turn, we need to undo AI's move AND Human's move (2 steps)
+        # If it's AI's turn (rare, maybe AI is thinking), we might just undo Human's move (1 step)
+        undo_count = 1
+        if self.game_started and self.current_turn == self.human_color:
+             undo_count = 2
+        
+        self.undo_expect_updates = undo_count
+        
+        # Send commands
+        for _ in range(undo_count):
+            self.engine.send_command(Command.UNDO)
 
     def on_board_click(self, coord):
+        if not self.game_started:
+            return
+            
+        if self.current_turn != self.human_color:
+            self.log("Warning: Not your turn!")
+            return
+
         self.log(f"GUI: Clicked {coord}")
-        # Remove optimistic update, rely on engine response
-        # self.update_piece(coord, self.current_turn)
-        # self.toggle_turn()
         self.engine.send_command(f"{Command.PLAY} {coord}")
