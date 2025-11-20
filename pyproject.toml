@@ -4,4 +4,6 @@ version = "0.1.0"
 description = "Reversi game with AI engine"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "flet",
+]
