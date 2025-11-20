@@ -78,11 +78,31 @@ class TrivialEngine(EngineInterface):
             moves_str = " ".join([self.board.coord_to_str(r, c) for r, c in moves])
             self._emit(f"{Response.VALID_MOVES} {moves_str}")
 
+        elif cmd == Command.PASS:
+            color = parts[1] if len(parts) > 1 else self.board.current_player
+            if color != self.board.current_player:
+                self._emit(f"{Response.ERROR} Not {color}'s turn")
+                return
+            if self.board.has_valid_move(color):
+                self._emit(f"{Response.ERROR} Moves available for {color}")
+                return
+            if self.board.pass_turn(color):
+                self._emit(Response.OK)
+                self._emit_board_update()
+                self._check_game_state()
+            else:
+                self._emit(f"{Response.ERROR} Unable to pass for {color}")
+
     def _ai_move(self, color: str):
         time.sleep(0.2)
         valid_moves = self.board.get_valid_moves(color)
         if not valid_moves:
-            self._emit(Response.PASS)
+            if self.board.pass_turn(color):
+                self._emit(f"{Response.PASS} {color}")
+                self._emit_board_update()
+                self._check_game_state()
+            else:
+                self._emit(f"{Response.ERROR} Cannot pass {color}")
             return
 
         r, c = random.choice(valid_moves)

@@ -6,6 +6,7 @@ class Command:
     UNDO = "UNDO"
     BOARD = "BOARD"     # Request board state
     VALID_MOVES = "VALID_MOVES" # Request valid moves
+    PASS = "PASS"       # PASS <color> - pass a turn when no moves
     QUIT = "QUIT"
 
 class Response:

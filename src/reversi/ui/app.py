@@ -24,6 +24,12 @@ class ReversiApp:
         self.cell_size = 60
         self.board_padding = 24
         self._last_viewport = (None, None)
+        self.pass_button = None
+        self.black_score_text = None
+        self.white_score_text = None
+        self.status_text = None
+        self.latest_scores = {"BLACK": 2, "WHITE": 2}
+        self._pending_status_message = None
 
     def main(self, page: ft.Page):
         self.page = page
@@ -44,6 +50,12 @@ class ReversiApp:
         )
         
         # Sidebar
+        self.pass_button = ft.ElevatedButton(
+            "Pass Turn",
+            on_click=self.on_pass,
+            disabled=True,
+            expand=1
+        )
         self.sidebar = ft.Container(
             content=ft.Column(
                 [
@@ -61,7 +73,14 @@ class ReversiApp:
                     ft.ElevatedButton("Start New Game", on_click=self.on_new_game, width=200),
                     ft.Divider(),
                     ft.Text("Controls", size=20, weight=ft.FontWeight.BOLD),
-                    ft.ElevatedButton("Undo", on_click=self.on_undo, width=200),
+                    ft.Row(
+                        [
+                            ft.ElevatedButton("Undo", on_click=self.on_undo, expand=1),
+                            self.pass_button
+                        ],
+                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                        spacing=10
+                    ),
                     ft.Divider(),
                     ft.Text("Engine Log", size=16, weight=ft.FontWeight.BOLD),
                     log_container
@@ -76,6 +95,7 @@ class ReversiApp:
 
         # Board Area
         self.board_grid = self.create_board()
+        self.scoreboard = self.create_scoreboard()
         initial_board_size = self.board_size * self.cell_size + self.board_padding * 2
         self.board_wrapper = ft.Container(
             content=self.board_grid,
@@ -98,7 +118,13 @@ class ReversiApp:
         )
 
         self.board_area = ft.Container(
-            content=self.board_wrapper,
+            content=ft.Column(
+                [self.scoreboard, self.board_wrapper],
+                spacing=20,
+                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                alignment=ft.MainAxisAlignment.START,
+                expand=True
+            ),
             alignment=ft.alignment.center,
             expand=True,
             bgcolor="grey200"
@@ -328,6 +354,10 @@ class ReversiApp:
         self.update_piece(f"{c2}{r1}", "BLACK")
         self.update_piece(f"{c1}{r2}", "BLACK")
         self.current_turn = "BLACK"
+        self.set_status("Waiting for engine...")
+        if self.pass_button:
+            self.pass_button.disabled = True
+            self.pass_button.update()
 
     def log(self, message: str):
         self.log_view.controls.append(ft.Text(message, font_family="monospace", size=10))
@@ -348,6 +378,16 @@ class ReversiApp:
                 state_str = parts[3]
                 self.current_turn = current_player
                 self.update_board_from_state(size, state_str)
+                self.update_scores_from_state(size, state_str, current_player)
+                if self._pending_status_message:
+                    self.set_status(self._pending_status_message)
+                    self._pending_status_message = None
+                elif self.game_started:
+                    self.set_status(f"{self._color_label(self.current_turn)} to move")
+
+                if self.pass_button and self.current_turn != self.human_color:
+                    self.pass_button.disabled = True
+                    self.pass_button.update()
                 
                 # Handle Undo Sequence
                 if self.undo_expect_updates > 0:
@@ -373,11 +413,39 @@ class ReversiApp:
             # VALID_MOVES <c1> <c2> ...
             moves = parts[1:]
             self.highlight_valid_moves(moves)
+            if self.pass_button:
+                if self.game_started and self.current_turn == self.human_color:
+                    no_moves = len(moves) == 0
+                    self.pass_button.disabled = not no_moves
+                    status_text = f"{self._color_label(self.human_color)} has no moves. Tap Pass." if no_moves else f"{self._color_label(self.human_color)} to move"
+                    self.set_status(status_text)
+                else:
+                    self.pass_button.disabled = True
+                self.pass_button.update()
             
         elif cmd == Response.RESULT:
             winner = parts[1]
             self.log(f"GAME OVER: Winner is {winner}")
             self.game_started = False
+            if self.pass_button:
+                self.pass_button.disabled = True
+                self.pass_button.update()
+            if winner == "DRAW":
+                self.set_status(
+                    f"Draw! {self.latest_scores['BLACK']} - {self.latest_scores['WHITE']}",
+                    color="#1b5e20"
+                )
+            else:
+                pretty = self._color_label(winner)
+                self.set_status(
+                    f"{pretty} wins! {self.latest_scores['BLACK']} - {self.latest_scores['WHITE']}",
+                    color="#b71c1c"
+                )
+
+        elif cmd == Response.PASS:
+            color = parts[1] if len(parts) > 1 else "UNKNOWN"
+            opponent = "WHITE" if color == "BLACK" else "BLACK"
+            self._pending_status_message = f"{self._color_label(color)} passes. {self._color_label(opponent)} to move."
 
     def update_board_from_state(self, size: int, state_str: str):
         if size != self.board_size:
@@ -431,3 +499,74 @@ class ReversiApp:
         # Clear highlights immediately so the newly placed stone doesn't overlap
         self.highlight_valid_moves([])
         self.engine.send_command(f"{Command.PLAY} {coord}")
+
+    def on_pass(self, e):
+        if not self.game_started or self.current_turn != self.human_color:
+            return
+        self.log("GUI: Requesting PASS")
+        if self.pass_button:
+            self.pass_button.disabled = True
+            self.pass_button.update()
+        self.engine.send_command(f"{Command.PASS} {self.human_color}")
+
+    def create_scoreboard(self):
+        self.black_score_text = ft.Text("● Black 2", size=22, weight=ft.FontWeight.BOLD, color="#111111")
+        self.white_score_text = ft.Text("○ White 2", size=22, weight=ft.FontWeight.BOLD, color="#444444")
+        self.status_text = ft.Text("Waiting for engine...", size=13, color="#333333", weight=ft.FontWeight.BOLD)
+
+        header_row = ft.Row(
+            [
+                ft.Text("BLACK", size=11, color="#666666"),
+                self.status_text,
+                ft.Text("WHITE", size=11, color="#666666")
+            ],
+            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER
+        )
+
+        score_row = ft.Row(
+            [self.black_score_text, ft.Container(width=12), self.white_score_text],
+            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER
+        )
+
+        return ft.Container(
+            content=ft.Column(
+                [header_row, score_row],
+                spacing=4,
+                alignment=ft.MainAxisAlignment.START,
+                horizontal_alignment=ft.CrossAxisAlignment.STRETCH
+            ),
+            padding=ft.padding.symmetric(vertical=8, horizontal=18),
+            bgcolor="#f9f9f9",
+            border_radius=14,
+            border=ft.border.all(1, "#e0e0e0"),
+            shadow=ft.BoxShadow(
+                blur_radius=6,
+                color="rgba(0,0,0,0.08)",
+                offset=ft.Offset(0, 3)
+            )
+        )
+
+    def update_scores_from_state(self, size: int, state_str: str, current_player: str):
+        black = state_str.count("B")
+        white = state_str.count("W")
+        self.latest_scores = {"BLACK": black, "WHITE": white}
+        if self.black_score_text and self.white_score_text:
+            self.black_score_text.value = f"● Black {black}"
+            self.white_score_text.value = f"○ White {white}"
+            self.black_score_text.update()
+            self.white_score_text.update()
+
+    def set_status(self, message: str, color: str = "#333333"):
+        if self.status_text:
+            self.status_text.value = message
+            self.status_text.color = color
+            self.status_text.update()
+
+    def _color_label(self, color: str) -> str:
+        if color == "BLACK":
+            return "Black"
+        if color == "WHITE":
+            return "White"
+        return color.capitalize()

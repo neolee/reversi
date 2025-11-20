@@ -102,6 +102,19 @@ class Board:
         self.current_player = opponent
         return True
 
+    def pass_turn(self, player: str) -> bool:
+        """Pass the turn to the opponent without placing a disk."""
+        if player not in (self.BLACK, self.WHITE):
+            return False
+
+        opponent = self.WHITE if player == self.BLACK else self.BLACK
+        if self.current_player != player:
+            return False
+
+        self._save_state()
+        self.current_player = opponent
+        return True
+
     def has_valid_move(self, player: str) -> bool:
         return len(self.get_valid_moves(player)) > 0
 
