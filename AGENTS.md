@@ -30,5 +30,12 @@ Develop a cross-platform Reversi game featuring a clean GUI and a powerful AI en
 - **Documentation**: Document the protocol clearly.
 
 ## Current Status
-- Project is in initial setup phase.
-- Dependencies are not yet finalized in `pyproject.toml`.
+- **UI**: Basic Flet-based GUI implemented (`src/reversi/ui`).
+- **Engine**: `MockEngine` implemented for testing; `EngineInterface` defined.
+- **Protocol**: Basic text-based protocol defined (`src/reversi/protocol`).
+- **Entry Point**: `main.py` created with CLI support (e.g., `uv run main.py ui --size 8`).
+- **Dependencies**: `flet` added to `pyproject.toml`.
+
+## Design Decisions
+- **Rule Management**: The Engine is the "Source of Truth" for game rules (valid moves, win conditions). The UI will query the engine for valid moves to guide the user.
+- **Board Size**: Parameterized (default 8x8), supported by both UI and Engine.

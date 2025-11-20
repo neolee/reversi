@@ -7,11 +7,11 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 
 import flet as ft
 from reversi.ui.app import ReversiApp
-from reversi.engine.mock_engine import MockEngine
+from reversi.engine.local_engine import LocalEngine
 
 def run_ui(args):
     print(f"Starting UI with board size {args.size}...")
-    engine = MockEngine(board_size=args.size)
+    engine = LocalEngine(board_size=args.size)
     app = ReversiApp(engine, board_size=args.size)
     ft.app(target=app.main)
 

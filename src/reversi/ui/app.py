@@ -146,10 +146,42 @@ class ReversiApp:
                 self.update_piece(coord, self.current_turn)
                 self.toggle_turn()
 
+        elif cmd == Response.BOARD:
+            # BOARD <size> <state_string>
+            if len(parts) > 2:
+                size = int(parts[1])
+                state_str = parts[2]
+                self.update_board_from_state(size, state_str)
+
         elif cmd == Response.OK:
             # If we just sent a PLAY command, we should update the board too
             # But for now, let's assume the engine sends MOVE back or we update optimistically
             pass
+
+    def update_board_from_state(self, size: int, state_str: str):
+        if size != self.board_size:
+            self.log(f"Error: Board size mismatch {size} vs {self.board_size}")
+            return
+        
+        for r in range(size):
+            for c in range(size):
+                idx = r * size + c
+                if idx < len(state_str):
+                    char = state_str[idx]
+                    coord = f"{chr(65+c)}{r+1}"
+                    if char == "B":
+                        self.update_piece(coord, "BLACK")
+                    elif char == "W":
+                        self.update_piece(coord, "WHITE")
+                    else:
+                        self.update_piece(coord, None)
+        
+        # Update turn based on piece count? Or engine should tell us.
+        # For now, let's just rely on the fact that if we got a board update,
+        # it's likely after a move, so we might need to sync turn.
+        # But simple piece counting works for Reversi to determine turn if needed,
+        # or we just wait for next event.
+        pass
 
         # elif cmd == Response.NEWGAME: # Or if we reset
         #      self.reset_board_ui()
@@ -172,7 +204,7 @@ class ReversiApp:
 
     def on_board_click(self, coord):
         self.log(f"GUI: Clicked {coord}")
-        # Optimistic update for human move
-        self.update_piece(coord, self.current_turn)
-        self.toggle_turn()
+        # Remove optimistic update, rely on engine response
+        # self.update_piece(coord, self.current_turn)
+        # self.toggle_turn()
         self.engine.send_command(f"{Command.PLAY} {coord}")
