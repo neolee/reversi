@@ -1,5 +1,5 @@
-import asyncio
 import flet as ft
+
 
 class BoardComponent:
     def __init__(self, board_size: int, on_click_callback, cell_size: float = 60):

@@ -1,4 +1,5 @@
-from typing import List, Tuple, Optional, Set
+from typing import List, Tuple, Optional
+
 
 class Board:
     BLACK = "BLACK"

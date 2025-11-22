@@ -1,6 +1,7 @@
 import flet as ft
 from typing import Callable, Dict
 
+
 class GameControlsComponent:
     def __init__(self, 
                  on_new_game: Callable,

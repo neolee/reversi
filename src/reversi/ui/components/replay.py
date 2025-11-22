@@ -2,6 +2,7 @@ import asyncio
 import flet as ft
 from typing import Callable, cast
 
+
 class ReplayController:
     def __init__(self,
                  page_getter: Callable[[], ft.Page | None],

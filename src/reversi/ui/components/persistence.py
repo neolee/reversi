@@ -3,7 +3,8 @@ import os
 from datetime import datetime
 from urllib.parse import quote
 import flet as ft
-from typing import Callable, Any
+from typing import Callable
+
 
 class PersistenceManager:
     def __init__(self,

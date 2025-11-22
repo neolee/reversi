@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Callable, Optional
 
+
 class EngineInterface(ABC):
     """
     Abstract base class for Reversi Engine Interface.

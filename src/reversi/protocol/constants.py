@@ -9,6 +9,7 @@ class Command:
     PASS = "PASS"       # PASS <color> - pass a turn when no moves
     QUIT = "QUIT"
 
+
 class Response:
     READY = "READY"
     OK = "OK"

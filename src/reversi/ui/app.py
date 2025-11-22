@@ -11,6 +11,7 @@ from reversi.engine.metadata import get_engine_metadata, list_engine_metadata, r
 
 SAVE_FILE_VERSION = 2
 
+
 class ReversiApp:
     def __init__(self, engine: EngineInterface, board_size: int = 8):
         self.engine = engine

@@ -1,5 +1,6 @@
 import flet as ft
 
+
 class ScoreboardComponent:
     def __init__(self, height: float = 82):
         self.height = height

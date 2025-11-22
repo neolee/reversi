@@ -16,9 +16,8 @@ from reversi.engine.registry import (
 )
 from reversi.cli.duel import EngineSpec, run_duel_series
 
+
 ENGINE_NAMES = sorted(get_engine_choices().keys())
-
-
 DEFAULT_PROTOCOL_ENGINE = "minimax"
 
 

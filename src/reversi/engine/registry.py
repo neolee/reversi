@@ -12,6 +12,7 @@ from reversi.engine.rust_engine import (
     RustThunderEngine,
 )
 
+
 @dataclass(frozen=True)
 class EngineEntry:
     cls: Type[BaseEngine]
