@@ -7,142 +7,140 @@ This document describes the text-based communication protocol between the Revers
 ## Overview
 
 
-- Communication happens via standard input/output (stdin/stdout) for external engines, or direct method calls for internal Python engines (wrapped by `EngineInterface`).
-- The GUI sends **Commands**.
-- The Engine sends **Responses**.
-- All commands and responses are single lines of text.
+- Transport: stdin/stdout for external engines, direct method calls for in-process engines via `EngineInterface`.
+- The GUI (client) issues **Commands**; the engine answers with **Responses**.
+- Every message is a single line of UTF-8 text with tokens separated by spaces.
+- Coordinates are in "A1" notation (file letter A-H, rank number 1-8 by default).
+
+
+### Minimal Handshake Example
+
+```text
+GUI> INIT
+ENG> READY
+GUI> NEWGAME
+ENG> BOARD 8 BLACK ...........................BW......WB...........................
+GUI> GENMOVE BLACK
+ENG> MOVE D3
+ENG> BOARD 8 WHITE ...........B...........BW......WB...........................
+
+GUI> VALID_MOVES WHITE
+ENG> VALID_MOVES C3 C5 E3 F4
+GUI> PASS WHITE
+ENG> OK
+ENG> BOARD 8 BLACK ...........B...........BW......WB...........................
+```
 
 
 ## Commands (GUI -> Engine)
 
 
 ### `INIT`
-
-
-Initialize the engine. The engine should reset its internal state and prepare for a new session.
-- **Response**: `READY`
+Reset the engine to a clean state. Should not start a game automatically.
+- **Expected response**: `READY`
 
 
 ### `NEWGAME`
-
-
-Start a new game. Clears the board to the initial state.
-- **Response**: `OK`
+Start a fresh game on the current board size and emit the canonical board snapshot.
+- **Expected response**:
+  - `BOARD <size> <current_player> <state_string>` (preferred so the GUI can sync instantly)
+  - or `OK` followed by a `BOARD` push
 
 
 ### `PLAY <coord>`
+Apply a move for the side whose turn it currently is.
+- **Arguments**: `<coord>` such as `D3`.
+- **Responses**:
+  - `OK` if accepted (engine should also push an updated `BOARD`).
+  - `ERROR <msg>` if illegal or malformed.
 
-
-Place a piece at the specified coordinate for the current player.
-- **Arguments**:
-  - `<coord>`: Coordinate string (e.g., `D3`, `E4`).
-- **Response**:
-  - `OK`: Move accepted.
-  - `ERROR <msg>`: Move illegal or invalid format.
+**Example**
+```text
+GUI> PLAY F5
+ENG> OK
+ENG> BOARD 8 WHITE ........F........BW......WB...........................
+```
 
 
 ### `GENMOVE <color>`
+Ask the engine to produce and play a move for `color`. The engine may update its internal board immediately.
+- **Arguments**: `BLACK` or `WHITE`.
+- **Responses**:
+  - `MOVE <coord>` when a move is found.
+  - `PASS <color>` if no moves exist for that color.
+  - After responding, the engine should send a `BOARD` snapshot reflecting the updated state.
 
-
-Request the engine to generate a move for the specified color.
-- **Arguments**:
-  - `<color>`: `BLACK` or `WHITE`.
-- **Response**:
-  - `MOVE <coord>`: The engine's chosen move.
-  - `PASS <color>`: If no legal moves are available (engine also updates its internal turn).
-  - `RESIGN`: If the engine gives up.
-
-
-### `UNDO`
-
-
-Undo the last move (both players).
-- **Response**: `OK`
-
-
-### `BOARD`
-
-
-Request the current board state.
-- **Response**:
-  - `BOARD <size> <current_player> <state_string>`
-  - `state_string`: A string of length `size*size`, row by row. `.` for empty, `B` for Black, `W` for White.
+**Example**
+```text
+GUI> GENMOVE BLACK
+ENG> MOVE D3
+ENG> BOARD 8 WHITE ...........B...........BW......WB...........................
+```
 
 
 ### `VALID_MOVES [color]`
+Request the list of legal moves. If `color` is omitted, use the engine's current player.
+- **Response**: `VALID_MOVES <coord1> <coord2> ...` (empty list means no legal moves).
 
-
-Ask the engine for all legal moves for `color`. When omitted, the current player is assumed.
-- **Response**: `VALID_MOVES <coord1> <coord2> ...` (empty payload means no legal moves)
+**Example**
+```text
+GUI> VALID_MOVES WHITE
+ENG> VALID_MOVES C3 C5 E3 F4
+```
 
 
 ### `PASS <color>`
+Force `color` to pass when no moves exist.
+- **Response**: `OK` (plus an updated `BOARD`).
+- Engines may send `ERROR <msg>` if legal moves still exist.
 
+### `UNDO`
+Undo the most recent move. When the GUI needs to revert to a human turn it may issue two `UNDO`s in a row.
+- **Response**: `OK`, followed by a `BOARD` snapshot reflecting the rolled-back position.
 
-Explicitly pass a turn for `color`. Use only when the player has no legal moves.
-- **Response**: `OK` on success or `ERROR <msg>` if legal moves still exist.
-
+### `BOARD`
+Explicitly request the current board.
+- **Response**: `BOARD <size> <current_player> <state_string>` where `state_string` is `size*size` chars (`B`, `W`, or `.`) listed row-by-row starting at A1.
 
 ### `QUIT`
-
-
-Terminate the engine session.
+Shut down gracefully. Engines should release resources and stop emitting output.
 
 
 ## Responses (Engine -> GUI)
 
 
 ### `READY`
-
-
-Sent in response to `INIT`.
+Acknowledges `INIT`.
 
 
 ### `OK`
-
-
-Generic success response.
-
-
-### `MOVE <coord>`
-
-
-Sent in response to `GENMOVE`.
-
-
-### `PASS <color>`
-
-
-Sent in response to `GENMOVE` when no moves are possible. Includes the color that just passed; the engine also updates the current player internally.
+Generic success acknowledgement used by `PLAY`, `PASS`, `UNDO`, etc. Should normally be followed by a `BOARD` push so the GUI can stay in sync.
 
 
 ### `BOARD <size> <current_player> <state_string>`
+Describes the full board and whose turn is next. Emitted after `NEWGAME`, `PLAY`, `GENMOVE`, `PASS`, `UNDO`, and on explicit `BOARD` requests.
 
 
-Sent in response to `BOARD`, `NEWGAME`, `PASS`, or whenever the engine pushes an update.
+### `MOVE <coord>`
+Move produced for the last `GENMOVE` request. The engine should subsequently update the GUI with a `BOARD` snapshot reflecting the move.
+
+
+### `PASS <color>`
+Signals that `color` has no legal moves and must pass. Often emitted right after a `GENMOVE` request that yielded no moves.
 
 
 ### `VALID_MOVES <coord1> <coord2> ...`
-
-
-Reports legal moves for the last `VALID_MOVES` query. May be empty when no moves exist.
+Lists legal moves in response to a `VALID_MOVES` command. An empty payload indicates there are none.
 
 
 ### `ERROR <msg>`
+Indicates an invalid command, illegal move, or internal failure. The GUI logs these messages for debugging.
 
 
-Sent when a command fails or is invalid.
-
-
-### `INFO <key> <value>`
-
-
-Sent to provide auxiliary information (e.g., score, depth, pv).
-- Example: `INFO SCORE_BLACK 2`
+### `INFO <key> <value>` (optional)
+Auxiliary telemetry such as search depth, score, nodes, etc.
+- Example: `INFO SCORE_BLACK 24`
 
 
 ### `RESULT <winner>`
-
-
-Sent when the game ends.
-- `<winner>`: `BLACK`, `WHITE`, or `DRAW`.
+Announces the end of the game. `<winner>` is `BLACK`, `WHITE`, or `DRAW`. Engines typically send a final `BOARD` snapshot beforehand so the GUI can display final scores.
