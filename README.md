@@ -9,7 +9,7 @@ Cross-platform Reversi with a Flet UI and pluggable engines.
 - Live scoreboard above the board shows running disc counts and declares the winner when play ends.
 - Sidebar controls include a Pass Turn button that becomes available when the human has no legal moves, enforcing the official rules.
 - `MinimaxEngine` uses Alpha-Beta pruning plus board cloning for strong play; `TrivialEngine` remains as a random baseline.
-- `RustReversiEngine` wraps the `rust-reversi` PyPI package for a deeper Alpha-Beta search implemented in Rust.
+- `RustAlphaBetaEngine`, `RustThunderEngine`, and `RustMctsEngine` wrap the `rust-reversi` PyPI package for deterministic alpha-beta, epsilon-greedy playout, and Monte Carlo tree search playstyles.
 - Save/Load buttons write human-readable JSON timelines, and a replay toolbar under the board lets you scrub through any finished or loaded match.
 
 ## Requirements
@@ -22,15 +22,17 @@ Cross-platform Reversi with a Flet UI and pluggable engines.
 
 ```sh
 uv run main.py ui --size 8 --engine minimax --search-depth 3
-uv run main.py ui --size 8 --engine rust --search-depth 5
+uv run main.py ui --size 8 --engine rust-alpha --search-depth 5
 ```
 
 Engine switches:
 - `minimax` (default): Python engine with Alpha-Beta pruning. Tune strength with `--search-depth` (>=1).
-- `rust`: Alpha-Beta powered by the `rust-reversi` crate. Shares the `--search-depth` control (>=1) and currently targets 8x8 boards.
+- `rust-alpha`: Deterministic alpha-beta powered by the `rust-reversi` crate. Shares the `--search-depth` control (>=1). Legacy flag `--engine rust` maps here.
+- `rust-thunder`: Epsilon-greedy playout search (Thunder). Ignores `--search-depth`.
+- `rust-mcts`: Monte Carlo tree search variant for more stochastic play. Ignores `--search-depth`.
 - `trivial`: Random legal moves, useful for debugging GUI/protocol flows.
 
-Board size is adjustable with `--size` (defaults to 8). Python engines honor any size; the Rust engine currently supports 8x8 only.
+Board size is adjustable with `--size` (defaults to 8). Python engines honor any size; the Rust-backed engines currently support 8x8 only.
 
 The Controls panel now includes **Save** and **Load** buttons, and the replay toolbar under the board becomes active once a game ends or after you load a saved timeline.
 

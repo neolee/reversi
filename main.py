@@ -112,7 +112,7 @@ def main() -> None:
         "--search-depth",
         type=int,
         default=3,
-        help="Search depth for minimax/rust engines (default: 3)",
+        help="Search depth for minimax/rust-alpha engines (default: 3)",
     )
     ui_parser.set_defaults(func=run_ui)
 
@@ -129,7 +129,7 @@ def main() -> None:
     duel_parser.add_argument(
         "--white-engine",
         choices=ENGINE_NAMES,
-        default="rust",
+        default="rust-alpha",
         help="Engine used as white in the first game",
     )
     duel_parser.add_argument(

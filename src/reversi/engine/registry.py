@@ -6,7 +6,11 @@ from typing import Any, Dict, Type
 from reversi.engine.base_engine import BaseEngine
 from reversi.engine.minimax_engine import MinimaxEngine
 from reversi.engine.trivial_engine import TrivialEngine
-from reversi.engine.rust_engine import RustReversiEngine
+from reversi.engine.rust_engine import (
+    RustAlphaBetaEngine,
+    RustMctsEngine,
+    RustThunderEngine
+)
 
 @dataclass(frozen=True)
 class EngineEntry:
@@ -16,7 +20,10 @@ class EngineEntry:
 
 ENGINE_REGISTRY: Dict[str, EngineEntry] = {
     "minimax": EngineEntry(cls=MinimaxEngine, supports_depth=True),
-    "rust": EngineEntry(cls=RustReversiEngine, supports_depth=True),
+    "rust": EngineEntry(cls=RustAlphaBetaEngine, supports_depth=True),
+    "rust-alpha": EngineEntry(cls=RustAlphaBetaEngine, supports_depth=True),
+    "rust-thunder": EngineEntry(cls=RustThunderEngine, supports_depth=False),
+    "rust-mcts": EngineEntry(cls=RustMctsEngine, supports_depth=False),
     "trivial": EngineEntry(cls=TrivialEngine, supports_depth=False),
 }
 
