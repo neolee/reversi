@@ -41,6 +41,7 @@ Develop a cross-platform Reversi game featuring a clean GUI and a powerful AI en
 - **Engine**: `MinimaxEngine` evaluates positions with Alpha-Beta (tunable depth); `TrivialEngine` provides a random baseline; `RustReversiEngine` wraps the Rust implementation for deeper searches.
 - **Protocol**: Text-based command set (INIT/NEWGAME/PLAY/GENMOVE/VALID_MOVES/PASS/UNDO/BOARD/RESULT) implemented under `src/reversi/protocol`.
 - **Entry Point**: `main.py` CLI supports `--engine` (minimax/rust/trivial) and `--search-depth` flags for UI sessions (depth applies to minimax and rust).
+- **Persistence**: Sidebar Save/Load buttons export/import JSON timelines, and the replay toolbar under the board replays any finished or loaded match.
 - **Dependencies**: `flet` and `rust-reversi` declared in `pyproject.toml`.
 
 
@@ -57,9 +58,10 @@ Develop a cross-platform Reversi game featuring a clean GUI and a powerful AI en
 - Log pane autoscrolls and only re-renders itself for new messages to limit UI churn.
 - Pass button activates only when the human has no legal moves and sends `PASS <color>`; engines also auto-pass when they are out of moves, leading to a `RESULT` once both colors are stuck.
 - Live scoreboard above the board reflects disc counts in real time and states the winner when the game concludes.
+- Save/Load workflow records every board snapshot; replay controls stay disabled during live play to avoid conflicting with the engine.
+
 
 ## TODO
-- Implement save/load/replay flows with a human-editable format.
 - Design engine-vs-engine workflows: define CLI support (batch runs, match recording), clarify if/when the UI should visualize engine bouts, and outline the GUI changes needed for automated battles.
 - More options on GUI (engine, search depth, board size) and CLI (headless mode, engine-vs-engine).
 - Explore auxiliary tooling such as visualizing engine analysis data to aid debugging and teaching.
