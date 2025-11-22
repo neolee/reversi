@@ -35,7 +35,7 @@ class PersistenceManager:
         if not self.save_picker:
             return
         self.log(f"GUI: Save requested (timeline entries: {len(timeline)})")
-        default_name = f"reversi-{datetime.now():%Y%m%d-%H%M%S}.json"
+        default_name = self._build_default_filename(payload)
 
         page = self.get_page()
         initial_dir = page.client_storage.get("last_picker_path") if page else None
@@ -132,3 +132,24 @@ class PersistenceManager:
         decoded = data_bytes.decode("utf-8")
         data = json.loads(decoded)
         self.load_game_data(data)
+
+    def _build_default_filename(self, payload: dict) -> str:
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        player_one = self._player_tag(payload, "BLACK")
+        player_two = self._player_tag(payload, "WHITE")
+        return f"{player_one}-vs-{player_two}-{timestamp}.json"
+
+    def _player_tag(self, payload: dict, color: str) -> str:
+        modes = payload.get("player_modes") if isinstance(payload, dict) else None
+        mode = modes.get(color) if isinstance(modes, dict) else None
+        if mode == "human":
+            label = "player"
+        elif mode == "engine":
+            engines = payload.get("ai_engine_settings") if isinstance(payload, dict) else None
+            engine_cfg = engines.get(color) if isinstance(engines, dict) else None
+            engine_key = engine_cfg.get("engine_key") if isinstance(engine_cfg, dict) else None
+            label = engine_key or "engine"
+        else:
+            label = "player"
+        sanitized = "".join(ch if ch.isalnum() or ch in ("-", "_") else "-" for ch in label)
+        return sanitized.strip("-_") or "player"
