@@ -1,12 +1,9 @@
 # Reversi Project Context
 
-
 This file provides context for AI agents working on the Reversi project.
-
 
 ## Project Goal
 Develop a cross-platform Reversi game featuring a clean GUI and a powerful AI engine. The project aims to serve both educational purposes (via a built-in Minimax engine) and entertainment/competitive needs (via support for high-performance third-party engines).
-
 
 ## Architecture
 - **Separation of Concerns**: The GUI and the Game Engine must be decoupled.
@@ -15,12 +12,10 @@ Develop a cross-platform Reversi game featuring a clean GUI and a powerful AI en
   - **Built-in**: Python-based Minimax algorithm with Alpha-Beta Pruning.
   - **External**: Support for external executables (e.g., Rust-based engines).
 
-
 ## Tech Stack
 - **Language**: Python 3.11+ (as per pyproject.toml).
 - **Package Manager**: `uv`.
 - **UI Framework**: Flet (desktop/web).
-
 
 ## Key Features
 - Human vs AI and AI vs AI modes with per-color engine selection from the GUI.
@@ -29,12 +24,10 @@ Develop a cross-platform Reversi game featuring a clean GUI and a powerful AI en
 - Game save/load (human-readable JSON) and replay timeline with toolbar controls.
 - Headless duel runner (`main.py duel`) to script batches of engine-vs-engine games.
 
-
 ## Coding Conventions
 - **Protocol**: Keep the engine communication protocol simple and text-based.
 - **File Formats**: Save files should be simple and human-readable (e.g., JSON or plain text moves).
 - **Documentation**: Document the protocol clearly.
-
 
 ## Current Status
 - **UI**: Flet GUI with responsive board sizing, polished pieces, marker-based valid-move highlights, live score readouts, undo/pass-aware turn handling, and scoreboard labels that track whether a side is Human or which engine is in use.
@@ -45,11 +38,9 @@ Develop a cross-platform Reversi game featuring a clean GUI and a powerful AI en
 - **Persistence**: Sidebar Save/Load buttons export/import JSON timelines (v2 schema), and the replay toolbar under the board replays any finished or loaded match.
 - **Dependencies**: `flet` and `rust-reversi` declared in `pyproject.toml`.
 
-
 ## Design Decisions
 - **Rule Management**: The Engine is the "Source of Truth" for game rules (valid moves, win conditions). The UI will query the engine for valid moves to guide the user.
 - **Board Size**: Parameterized (default 8x8), supported by both UI and Engine.
-
 
 ## Recent Notes
 - UI auto-starts games and listens for engine responses; all turn transitions are driven by `BOARD`/`VALID_MOVES` messages.
@@ -61,7 +52,6 @@ Develop a cross-platform Reversi game featuring a clean GUI and a powerful AI en
 - Engine selection dialog lets each color choose/configure its engine; `ai_engine_settings` is persisted alongside player modes so replays/loadouts stay in sync.
 - CLI `ui` command no longer exposes `--engine`/`--search-depth`; the GUI is now the single source of truth for engine selection, while the duel command keeps per-side options.
 - Headless duel runner leverages the shared `EngineSpec` and metadata registry so both CLI and GUI stay aligned when adding new engines.
-
 
 ## Roadmap
 - Design spectator/visualization workflows for engine-vs-engine matches inside the GUI (live analysis overlays, match recording).
