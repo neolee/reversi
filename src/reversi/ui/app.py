@@ -30,6 +30,7 @@ class ReversiApp:
         self.status_text = None
         self.latest_scores = {"BLACK": 2, "WHITE": 2}
         self._pending_status_message = None
+        self._current_valid_moves: list[str] = []
 
     def main(self, page: ft.Page):
         self.page = page
@@ -323,6 +324,7 @@ class ReversiApp:
             piece.update()
 
     def highlight_valid_moves(self, moves):
+        self._current_valid_moves = list(moves)
         move_set = set(moves)
         for coord, cell in self.cell_containers.items():
             cell.border = ft.border.all(1, "black")
@@ -493,6 +495,10 @@ class ReversiApp:
             
         if self.current_turn != self.human_color:
             self.log("Warning: Not your turn!")
+            return
+
+        if self._current_valid_moves and coord not in self._current_valid_moves:
+            self.log("Warning: Invalid move, choose a highlighted square.")
             return
 
         self.log(f"GUI: Clicked {coord}")
