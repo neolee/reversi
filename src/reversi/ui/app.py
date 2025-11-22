@@ -14,6 +14,10 @@ class ReversiApp:
         self.board_size = board_size
         self.engine.set_callback(self.handle_engine_message)
         self.engine_name = engine.__class__.__name__
+        self.player_modes = {"BLACK": "human", "WHITE": "engine"}
+        self.human_color = "BLACK"
+        self.ai_color = "WHITE"
+        self._engine_request_color: str | None = None
 
         # Components
         self.board_component = BoardComponent(
@@ -41,7 +45,7 @@ class ReversiApp:
             on_new_game=self.on_new_game,
             on_undo=self.on_undo,
             on_pass=self.on_pass,
-            on_color_change=self.on_color_change,
+            on_player_mode_change=self.on_player_mode_change,
             on_save=self.persistence_manager.request_save,
             on_load=self.persistence_manager.request_load
         )
@@ -49,8 +53,7 @@ class ReversiApp:
         # UI State
         self.log_view = ft.ListView(expand=True, spacing=4, padding=0, auto_scroll=True)
         self.current_turn = "BLACK"
-        self.human_color = "BLACK"
-        self.ai_color = "WHITE"
+        self._update_primary_roles()
         self.game_started = False
         self.undo_expect_updates = 0
         self.board_wrapper = None
@@ -157,10 +160,23 @@ class ReversiApp:
 
         page.run_task(self._monitor_viewport)
 
-    def on_color_change(self, e):
-        self.human_color = e.control.value
-        self.ai_color = "WHITE" if self.human_color == "BLACK" else "BLACK"
-        self.log(f"Settings: Human is {self.human_color}")
+    def on_player_mode_change(self, color: str, mode: str):
+        if color not in self.player_modes:
+            return
+        if mode not in ("human", "engine"):
+            return
+        previous = self.player_modes.get(color)
+        if previous == mode:
+            return
+        self.player_modes[color] = mode
+        self.controls_component.set_player_mode(color, mode)
+        self._update_primary_roles()
+        self.log(
+            f"Settings: {self._color_label(color)} controlled by {self._player_label(color)}"
+        )
+        if self.game_started and color == self.current_turn:
+            self.controls_component.set_pass_disabled(not self._is_human_player(color))
+            self._drive_turn_loop()
 
     def adjust_board_size(self, width: float | None = None, height: float | None = None):
         if not getattr(self, "page", None) or not self.board_wrapper:
@@ -235,6 +251,7 @@ class ReversiApp:
         self.current_turn = "BLACK"
         self.scoreboard_component.set_status("Waiting for engine...")
         self.controls_component.set_pass_disabled(True)
+        self._engine_request_color = None
 
     def log(self, message: str):
         self.log_view.controls.append(
@@ -262,9 +279,11 @@ class ReversiApp:
                     self.scoreboard_component.set_status(self._pending_status_message)
                     self._pending_status_message = None
                 elif self.game_started:
-                    self.scoreboard_component.set_status(f"{self._color_label(self.current_turn)} to move")
+                    self.scoreboard_component.set_status(
+                        f"{self._color_label(self.current_turn)} ({self._player_label(self.current_turn)}) to move"
+                    )
 
-                if self.current_turn != self.human_color:
+                if not self._is_human_player(self.current_turn):
                     self.controls_component.set_pass_disabled(True)
 
                 # Handle Undo Sequence
@@ -282,10 +301,14 @@ class ReversiApp:
             # VALID_MOVES <c1> <c2> ...
             moves = parts[1:]
             self.board_component.highlight_valid_moves(moves)
-            if self.game_started and self.current_turn == self.human_color:
+            if self.game_started and self._is_human_player(self.current_turn):
                 no_moves = len(moves) == 0
                 self.controls_component.set_pass_disabled(not no_moves)
-                status_text = f"{self._color_label(self.human_color)} has no moves. Tap Pass." if no_moves else f"{self._color_label(self.human_color)} to move"
+                status_text = (
+                    f"{self._color_label(self.current_turn)} ({self._player_label(self.current_turn)}) has no moves. Tap Pass."
+                    if no_moves
+                    else f"{self._color_label(self.current_turn)} ({self._player_label(self.current_turn)}) to move"
+                )
                 self.scoreboard_component.set_status(status_text)
             else:
                 self.controls_component.set_pass_disabled(True)
@@ -293,11 +316,13 @@ class ReversiApp:
         elif cmd == Response.MOVE:
             if len(parts) > 1:
                 coord = parts[1]
+                move_color = self._engine_request_color or self._opponent_color(self.current_turn)
                 self._pending_move_context = {
-                    "color": self.ai_color,
+                    "color": move_color,
                     "coord": coord,
                     "type": "move",
                 }
+                self._engine_request_color = None
 
         elif cmd == Response.RESULT:
             winner = parts[1]
@@ -353,8 +378,9 @@ class ReversiApp:
     def on_undo(self, e):
         self.log("GUI: Sending UNDO")
         undo_count = 1
-        if self.game_started and self.current_turn == self.human_color:
-             undo_count = 2
+        opponent = self._opponent_color(self.current_turn)
+        if self.game_started and self._is_human_player(self.current_turn) and self._is_engine_player(opponent):
+            undo_count = 2
         self.undo_expect_updates = undo_count
         for _ in range(undo_count):
             self.engine.send_command(Command.UNDO)
@@ -363,7 +389,7 @@ class ReversiApp:
         if not self.game_started:
             return
 
-        if self.current_turn != self.human_color:
+        if not self._is_human_player(self.current_turn):
             self.log("Warning: Not your turn!")
             return
 
@@ -371,18 +397,18 @@ class ReversiApp:
             self.log(f"Warning: Invalid move {coord}. Please choose a highlighted cell.")
             return
 
-        self._pending_move_context = {"color": self.human_color, "coord": coord, "type": "move"}
+        self._pending_move_context = {"color": self.current_turn, "coord": coord, "type": "move"}
         self.log(f"GUI: Clicked {coord}")
         self.board_component.highlight_valid_moves([])
         self.engine.send_command(f"{Command.PLAY} {coord}")
 
     def on_pass(self, e):
-        if not self.game_started or self.current_turn != self.human_color:
+        if not self.game_started or not self._is_human_player(self.current_turn):
             return
         self.log("GUI: Requesting PASS")
         self.controls_component.set_pass_disabled(True)
-        self._pending_move_context = {"color": self.human_color, "coord": None, "type": "pass"}
-        self.engine.send_command(f"{Command.PASS} {self.human_color}")
+        self._pending_move_context = {"color": self.current_turn, "coord": None, "type": "pass"}
+        self.engine.send_command(f"{Command.PASS} {self.current_turn}")
 
     def update_scores_from_state(self, size: int, state_str: str, current_player: str):
         black = state_str.count("B")
@@ -400,12 +426,15 @@ class ReversiApp:
     def _drive_turn_loop(self):
         if not self.game_started or self._suppress_turn_requests:
             return
-        if self.current_turn == self.ai_color:
-            self.log("System: AI Turn, requesting move...")
-            self.engine.send_command(f"{Command.GENMOVE} {self.ai_color}")
+        if self._is_engine_player(self.current_turn):
+            self.log(
+                f"System: {self._player_label(self.current_turn)} turn, requesting move..."
+            )
+            self._engine_request_color = self.current_turn
+            self.engine.send_command(f"{Command.GENMOVE} {self.current_turn}")
         else:
             self.log("System: Human Turn, requesting valid moves...")
-            self.engine.send_command(f"{Command.VALID_MOVES} {self.human_color}")
+            self.engine.send_command(f"{Command.VALID_MOVES} {self.current_turn}")
 
     def _record_board_snapshot(self, state_str: str, current_player: str):
         if self._suppress_recording:
@@ -458,6 +487,7 @@ class ReversiApp:
             "board_size": self.board_size,
             "human_color": self.human_color,
             "ai_color": self.ai_color,
+            "player_modes": dict(self.player_modes),
             "timeline": self.timeline,
         }
 
@@ -482,10 +512,23 @@ class ReversiApp:
             self.timeline.append(cloned)
         self._pending_move_context = None
         self.replay_controller.stop_autoplay()
-        self.human_color = data.get("human_color", "BLACK")
-        self.ai_color = data.get("ai_color", "WHITE")
-
-        self.controls_component.set_color(self.human_color)
+        loaded_modes = data.get("player_modes")
+        if isinstance(loaded_modes, dict):
+            merged = {"BLACK": "human", "WHITE": "engine"}
+            merged.update({k: v for k, v in loaded_modes.items() if k in merged and v in ("human", "engine")})
+            self.player_modes = merged
+        else:
+            fallback_human = data.get("human_color", "BLACK")
+            fallback_ai = data.get("ai_color", "WHITE")
+            self.player_modes = {
+                "BLACK": "human" if fallback_human == "BLACK" else "engine",
+                "WHITE": "human" if fallback_human == "WHITE" else "engine",
+            }
+            if fallback_ai and fallback_ai != fallback_human:
+                self.player_modes[fallback_ai] = "engine"
+        self._update_primary_roles()
+        self.controls_component.set_player_mode("BLACK", self.player_modes["BLACK"])
+        self.controls_component.set_player_mode("WHITE", self.player_modes["WHITE"])
 
         self._suppress_turn_requests = True
         self._suppress_recording = True
@@ -505,3 +548,25 @@ class ReversiApp:
         self._apply_snapshot(len(self.timeline) - 1)
         self._drive_turn_loop()
         self.replay_controller.update_status()
+
+    def _is_human_player(self, color: str) -> bool:
+        return self.player_modes.get(color) == "human"
+
+    def _is_engine_player(self, color: str) -> bool:
+        return self.player_modes.get(color) == "engine"
+
+    def _player_label(self, color: str) -> str:
+        return "Human" if self._is_human_player(color) else self.engine_name
+
+    def _opponent_color(self, color: str) -> str:
+        return "WHITE" if color == "BLACK" else "BLACK"
+
+    def _primary_color_for_mode(self, mode: str) -> str | None:
+        for color in ("BLACK", "WHITE"):
+            if self.player_modes.get(color) == mode:
+                return color
+        return None
+
+    def _update_primary_roles(self):
+        self.human_color = self._primary_color_for_mode("human") or "BLACK"
+        self.ai_color = self._primary_color_for_mode("engine") or "WHITE"

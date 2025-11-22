@@ -1,23 +1,23 @@
 import flet as ft
-from typing import Callable
+from typing import Callable, Dict
 
 class GameControlsComponent:
     def __init__(self, 
                  on_new_game: Callable,
                  on_undo: Callable,
                  on_pass: Callable,
-                 on_color_change: Callable,
+                 on_player_mode_change: Callable[[str, str], None],
                  on_save: Callable,
                  on_load: Callable):
         self.on_new_game = on_new_game
         self.on_undo = on_undo
         self.on_pass = on_pass
-        self.on_color_change = on_color_change
+        self.on_player_mode_change = on_player_mode_change
         self.on_save = on_save
         self.on_load = on_load
         
         self.pass_button: ft.ElevatedButton | None = None
-        self.color_selector: ft.RadioGroup | None = None
+        self.player_mode_selectors: Dict[str, ft.Dropdown] = {}
         self.container: ft.Container | None = None
 
     def create_sidebar(self, log_view: ft.Control) -> ft.Container:
@@ -38,13 +38,36 @@ class GameControlsComponent:
             expand=1
         )
         
-        self.color_selector = ft.RadioGroup(
-            content=ft.Column([
-                ft.Radio(value="BLACK", label="Play as Black (First)"),
-                ft.Radio(value="WHITE", label="Play as White (Second)")
-            ]),
-            on_change=self.on_color_change,
-            value="BLACK"
+        def build_selector(color: str, label: str, default: str) -> ft.Row:
+            dropdown = ft.Dropdown(
+                options=[
+                    ft.dropdown.Option("human", "Human"),
+                    ft.dropdown.Option("engine", "Engine"),
+                ],
+                value=default,
+                on_change=lambda e, color=color: self.on_player_mode_change(color, e.control.value),
+                dense=True,
+                content_padding=ft.padding.symmetric(horizontal=8, vertical=4),
+                border_color="rgba(0,0,0,0.2)",
+                border_radius=8,
+                width=140,
+            )
+            self.player_mode_selectors[color] = dropdown
+            return ft.Row(
+                [
+                    ft.Text(label, weight=ft.FontWeight.BOLD),
+                    dropdown,
+                ],
+                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                spacing=8,
+            )
+
+        player_settings = ft.Column(
+            [
+                build_selector("BLACK", "Black", "human"),
+                build_selector("WHITE", "White", "engine"),
+            ],
+            spacing=6,
         )
         
         control_row = ft.Row(
@@ -70,7 +93,7 @@ class GameControlsComponent:
                     ft.Text("Reversi", size=30, weight=ft.FontWeight.BOLD),
                     ft.Divider(),
                     ft.Text("Game Settings", size=20, weight=ft.FontWeight.BOLD),
-                    self.color_selector,
+                    player_settings,
                     ft.ElevatedButton("Start New Game", on_click=self.on_new_game, width=200),
                     ft.Divider(),
                     ft.Text("Controls", size=20, weight=ft.FontWeight.BOLD),
@@ -94,7 +117,8 @@ class GameControlsComponent:
             self.pass_button.disabled = disabled
             self.pass_button.update()
 
-    def set_color(self, color: str):
-        if self.color_selector:
-            self.color_selector.value = color
-            self.color_selector.update()
+    def set_player_mode(self, color: str, mode: str):
+        selector = self.player_mode_selectors.get(color)
+        if selector:
+            selector.value = mode
+            selector.update()
