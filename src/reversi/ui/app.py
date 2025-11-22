@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 from datetime import datetime
 from typing import cast
 from urllib.parse import quote
@@ -63,7 +64,8 @@ class ReversiApp:
         page.padding = 20
         self.save_picker = ft.FilePicker(on_result=self._handle_save_dialog)
         self.load_picker = ft.FilePicker(on_result=self._handle_load_dialog)
-        page.overlay.extend([self.save_picker, self.load_picker])
+        page.overlay.append(self.save_picker)
+        page.overlay.append(self.load_picker)
 
         # Log Area
         log_container = ft.Container(
@@ -816,16 +818,27 @@ class ReversiApp:
 
     def _update_replay_status(self):
         total = len(self.timeline)
-        status = f"Replay {self.replay_index} / {max(total - 1, 0)}" if total else "Replay 0 / 0"
+        max_index = max(total - 1, 0)
+        status = f"Replay {self.replay_index} / {max_index}" if total else "Replay 0 / 0"
         if self.replay_status_text:
             self.replay_status_text.value = status
             if getattr(self.replay_status_text, "page", None):
                 self.replay_status_text.update()
-        disabled = self.game_started or total == 0
-        for btn in self.replay_buttons.values():
-            btn.disabled = disabled
-            if getattr(btn, "page", None):
-                btn.update()
+
+        base_disabled = self.game_started or total == 0
+        at_start = self.replay_index <= 0
+        at_end = self.replay_index >= max_index
+
+        if self.replay_buttons:
+            self.replay_buttons["start"].disabled = base_disabled or at_start
+            self.replay_buttons["prev"].disabled = base_disabled or at_start
+            self.replay_buttons["play"].disabled = base_disabled or at_end
+            self.replay_buttons["next"].disabled = base_disabled or at_end
+            self.replay_buttons["end"].disabled = base_disabled or at_end
+
+            for btn in self.replay_buttons.values():
+                if getattr(btn, "page", None):
+                    btn.update()
 
     def on_save_game(self, e):
         if not self.timeline:
@@ -835,9 +848,11 @@ class ReversiApp:
             return
         self.log(f"GUI: Save requested (timeline entries: {len(self.timeline)})")
         default_name = f"reversi-{datetime.now():%Y%m%d-%H%M%S}.json"
-        self.save_picker.save_file(file_name=default_name, allowed_extensions=["json"])
-        if getattr(self, "page", None):
-            self.page.update()
+        self.save_picker.save_file(
+            file_name=default_name,
+            allowed_extensions=["json"],
+            initial_directory=self.page.client_storage.get("last_picker_path"),
+        )
 
     def _handle_save_dialog(self, e: ft.FilePickerResultEvent):
         if not e.path and not e.files:
@@ -845,6 +860,7 @@ class ReversiApp:
             return
         payload = self._build_save_payload()
         if e.path:
+            self.page.client_storage.set("last_picker_path", os.path.dirname(e.path))
             try:
                 self._save_game_to_path(e.path, payload)
                 self.log(f"Saved game to {e.path}")
@@ -883,9 +899,11 @@ class ReversiApp:
         if not self.load_picker:
             return
         self.log("GUI: Load requested")
-        self.load_picker.pick_files(allow_multiple=False, allowed_extensions=["json"])
-        if getattr(self, "page", None):
-            self.page.update()
+        self.load_picker.pick_files(
+            allow_multiple=False,
+            allowed_extensions=["json"],
+            initial_directory=self.page.client_storage.get("last_picker_path"),
+        )
 
     def _handle_load_dialog(self, e: ft.FilePickerResultEvent):
         if not e.files:
@@ -893,6 +911,7 @@ class ReversiApp:
             return
         file_info = e.files[0]
         if file_info.path:
+            self.page.client_storage.set("last_picker_path", os.path.dirname(file_info.path))
             try:
                 self._load_game_from_path(file_info.path)
                 self.log(f"Loaded game from {file_info.path}")
@@ -964,4 +983,3 @@ class ReversiApp:
         self._apply_snapshot(len(self.timeline) - 1)
         self._drive_turn_loop()
         self._update_replay_status()
-

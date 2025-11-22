@@ -65,3 +65,6 @@ Develop a cross-platform Reversi game featuring a clean GUI and a powerful AI en
 - Design engine-vs-engine workflows: define CLI support (batch runs, match recording), clarify if/when the UI should visualize engine bouts, and outline the GUI changes needed for automated battles.
 - More options on GUI (engine, search depth, board size) and CLI (headless mode, engine-vs-engine).
 - Explore auxiliary tooling such as visualizing engine analysis data to aid debugging and teaching.
+
+## Known Issues
+- **Flet FilePicker Bug**: Flet version 0.28.3 has a bug where the FilePicker dialog does not appear. This is fixed in 0.28.2 (rollback required) or future versions.

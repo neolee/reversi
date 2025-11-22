@@ -27,7 +27,7 @@ wheels = [
 
 [[package]]
 name = "flet"
-version = "0.28.3"
+version = "0.28.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "httpx", marker = "platform_system != 'Pyodide'" },
@@ -35,7 +35,7 @@ dependencies = [
     { name = "repath" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/2f/d0/9ba4ee34972e9e0cf54b1f7d17c695491632421f81301993f2aec8d12105/flet-0.28.3-py3-none-any.whl", hash = "sha256:649bfc4af7933956ecf44963df6c0d997bff9ceeaf89d3c86d96803840cab83e", size = 463000, upload-time = "2025-05-20T19:44:58.651Z" },
+    { url = "https://files.pythonhosted.org/packages/37/ae/a05260d6f32929d14183347cca9fb6d642d4a08de7015e0afb1b674a931e/flet-0.28.2-py3-none-any.whl", hash = "sha256:599ae936863510e427b03ccc7f84d57eda712080d95e72e2086a2fa8ec5e6661", size = 462918, upload-time = "2025-05-10T22:02:07.584Z" },
 ]
 
 [[package]]
@@ -116,7 +116,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "flet" },
+    { name = "flet", specifier = "==0.28.2" },
     { name = "rust-reversi" },
 ]
 
