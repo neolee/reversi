@@ -4,34 +4,7 @@ from dataclasses import dataclass
 from typing import Dict, List, Tuple
 
 from reversi.engine.board import Board
-from reversi.engine.registry import build_engine_instance
-
-
-@dataclass
-class EngineSpec:
-    key: str
-    label: str
-    search_depth: int | None = None
-    think_delay: float | None = 0.0
-
-
-class EnginePlayer:
-    def __init__(self, spec: EngineSpec, board_size: int):
-        self.spec = spec
-        self.engine = build_engine_instance(
-            spec.key,
-            board_size=board_size,
-            search_depth=spec.search_depth,
-            think_delay=spec.think_delay,
-        )
-
-    def choose_move(self, board: Board, color: str):
-        snapshot = board.clone()
-        valid_moves = snapshot.get_valid_moves(color)
-        if not valid_moves:
-            return None
-        move = self.engine._pick_move(snapshot, color, valid_moves)  # type: ignore[attr-defined]
-        return move if move in valid_moves else valid_moves[0]
+from reversi.engine.ai_player import EnginePlayer, EngineSpec
 
 
 @dataclass

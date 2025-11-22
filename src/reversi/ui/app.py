@@ -7,17 +7,27 @@ from reversi.ui.components.replay import ReplayController
 from reversi.ui.components.persistence import PersistenceManager
 from reversi.ui.components.scoreboard import ScoreboardComponent
 from reversi.ui.components.controls import GameControlsComponent
+from reversi.engine.metadata import get_engine_metadata, list_engine_metadata, resolve_engine_key
+
+SAVE_FILE_VERSION = 2
 
 class ReversiApp:
     def __init__(self, engine: EngineInterface, board_size: int = 8):
         self.engine = engine
         self.board_size = board_size
         self.engine.set_callback(self.handle_engine_message)
-        self.engine_name = engine.__class__.__name__
         self.player_modes = {"BLACK": "human", "WHITE": "engine"}
         self.human_color = "BLACK"
         self.ai_color = "WHITE"
         self._engine_request_color: str | None = None
+        self.ai_engine_settings = {
+            "BLACK": self._default_engine_config("minimax"),
+            "WHITE": self._default_engine_config("rust-alpha"),
+        }
+        self._engine_dialog: ft.AlertDialog | None = None
+        self._engine_dialog_context: dict | None = None
+        self._engine_dialog_params_column: ft.Column | None = None
+        self._engine_dialog_description: ft.Text | None = None
 
         # Components
         self.board_component = BoardComponent(
@@ -46,6 +56,7 @@ class ReversiApp:
             on_undo=self.on_undo,
             on_pass=self.on_pass,
             on_player_mode_change=self.on_player_mode_change,
+            on_configure_engine=self.on_configure_engine,
             on_save=self.persistence_manager.request_save,
             on_load=self.persistence_manager.request_load
         )
@@ -63,6 +74,7 @@ class ReversiApp:
         self._pending_move_context: dict | None = None
         self._suppress_turn_requests = False
         self._suppress_recording = False
+        self._sync_scoreboard_labels()
 
         # Layout Constants
         self.board_padding = 24
@@ -178,6 +190,67 @@ class ReversiApp:
             self.controls_component.set_pass_disabled(not self._is_human_player(color))
             self._drive_turn_loop()
 
+    def on_configure_engine(self, color: str):
+        if not getattr(self, "page", None):
+            return
+        config = self.ai_engine_settings.get(color)
+        if not config:
+            config = self._default_engine_config("minimax")
+            self.ai_engine_settings[color] = config
+        selected_key = config["engine_key"]
+        dropdown = ft.Dropdown(
+            options=[
+                ft.dropdown.Option(meta.key, meta.label)
+                for meta in list_engine_metadata()
+            ],
+            value=selected_key,
+            dense=True,
+            on_change=lambda e: self._handle_engine_choice_change(color, e.control.value),
+        )
+        self._engine_dialog_context = {
+            "color": color,
+            "selected_key": selected_key,
+            "param_controls": {},
+            "param_meta": {},
+        }
+        self._engine_dialog_description = ft.Text(
+            get_engine_metadata(selected_key).description,
+            size=12,
+            italic=True,
+            color="#555555",
+        )
+        initial_params = dict(config.get("params", {}))
+        self._engine_dialog_params_column = ft.Column(
+            self._build_engine_param_controls(selected_key, initial_params),
+            spacing=8,
+        )
+        content = ft.Column(
+            [
+                ft.Text(f"{self._color_label(color)} Engine", size=18, weight=ft.FontWeight.BOLD),
+                dropdown,
+                self._engine_dialog_description,
+                ft.Divider(height=1),
+                self._engine_dialog_params_column,
+            ],
+            tight=True,
+            spacing=12,
+            width=360,
+        )
+        dialog = ft.AlertDialog(
+            modal=True,
+            content=content,
+            actions=[
+                ft.TextButton("Cancel", on_click=self._close_engine_dialog),
+                ft.FilledButton("Save", on_click=self._save_engine_dialog),
+            ],
+            actions_alignment=ft.MainAxisAlignment.END,
+        )
+        self._engine_dialog = dialog
+        if dialog not in self.page.overlay:
+            self.page.overlay.append(dialog)
+        dialog.open = True
+        self.page.update()
+
     def adjust_board_size(self, width: float | None = None, height: float | None = None):
         if not getattr(self, "page", None) or not self.board_wrapper:
             return
@@ -285,6 +358,7 @@ class ReversiApp:
 
                 if not self._is_human_player(self.current_turn):
                     self.controls_component.set_pass_disabled(True)
+                    self.board_component.highlight_valid_moves([])
 
                 # Handle Undo Sequence
                 if self.undo_expect_updates > 0:
@@ -482,17 +556,23 @@ class ReversiApp:
 
     def _build_save_payload(self):
         return {
-            "version": 1,
-            "engine": self.engine_name,
+            "version": SAVE_FILE_VERSION,
             "board_size": self.board_size,
             "human_color": self.human_color,
             "ai_color": self.ai_color,
             "player_modes": dict(self.player_modes),
+            "ai_engine_settings": {
+                color: {
+                    "engine_key": cfg.get("engine_key"),
+                    "params": dict(cfg.get("params", {})),
+                }
+                for color, cfg in self.ai_engine_settings.items()
+            },
             "timeline": self.timeline,
         }
 
     def _apply_loaded_data(self, data: dict):
-        if data.get("version") != 1:
+        if data.get("version") != SAVE_FILE_VERSION:
             raise ValueError("Unsupported save file version")
         if data.get("board_size") != self.board_size:
             raise ValueError("Board size mismatch in save file")
@@ -530,6 +610,31 @@ class ReversiApp:
         self.controls_component.set_player_mode("BLACK", self.player_modes["BLACK"])
         self.controls_component.set_player_mode("WHITE", self.player_modes["WHITE"])
 
+        loaded_ai_settings = data.get("ai_engine_settings")
+        if isinstance(loaded_ai_settings, dict):
+            merged_settings = {}
+            for color in ("BLACK", "WHITE"):
+                cfg = loaded_ai_settings.get(color)
+                if isinstance(cfg, dict) and cfg.get("engine_key"):
+                    engine_key = resolve_engine_key(cfg["engine_key"])
+                    params = cfg.get("params") if isinstance(cfg.get("params"), dict) else {}
+                    defaults = self._default_engine_config(engine_key)
+                    merged_params = defaults["params"].copy()
+                    merged_params.update(params)
+                    merged_settings[color] = {
+                        "engine_key": engine_key,
+                        "params": merged_params,
+                    }
+                else:
+                    merged_settings[color] = self._default_engine_config("minimax" if color == "BLACK" else "rust-alpha")
+            self.ai_engine_settings = merged_settings
+        else:
+            self.ai_engine_settings = {
+                "BLACK": self._default_engine_config("minimax"),
+                "WHITE": self._default_engine_config("rust-alpha"),
+            }
+        self._sync_scoreboard_labels()
+
         self._suppress_turn_requests = True
         self._suppress_recording = True
         self.game_started = True
@@ -556,7 +661,16 @@ class ReversiApp:
         return self.player_modes.get(color) == "engine"
 
     def _player_label(self, color: str) -> str:
-        return "Human" if self._is_human_player(color) else self.engine_name
+        if self._is_human_player(color):
+            return "Human"
+        config = self.ai_engine_settings.get(color)
+        engine_key = config.get("engine_key") if isinstance(config, dict) else None
+        if engine_key:
+            try:
+                return self._engine_label(engine_key)
+            except ValueError:
+                pass
+        return "Engine"
 
     def _opponent_color(self, color: str) -> str:
         return "WHITE" if color == "BLACK" else "BLACK"
@@ -570,3 +684,113 @@ class ReversiApp:
     def _update_primary_roles(self):
         self.human_color = self._primary_color_for_mode("human") or "BLACK"
         self.ai_color = self._primary_color_for_mode("engine") or "WHITE"
+        self._sync_scoreboard_labels()
+
+    def _sync_scoreboard_labels(self):
+        if not hasattr(self, "scoreboard_component"):
+            return
+        self.scoreboard_component.set_player_label("BLACK", self._player_label("BLACK"))
+        self.scoreboard_component.set_player_label("WHITE", self._player_label("WHITE"))
+
+    def _default_engine_config(self, engine_key: str) -> dict:
+        meta = get_engine_metadata(engine_key)
+        return {
+            "engine_key": meta.key,
+            "params": {param.name: param.default for param in meta.parameters},
+        }
+
+    def _engine_label(self, engine_key: str) -> str:
+        return get_engine_metadata(engine_key).label
+
+    def _handle_engine_choice_change(self, color: str, engine_key: str):
+        if not self._engine_dialog_context:
+            return
+        canonical = resolve_engine_key(engine_key)
+        self._engine_dialog_context["selected_key"] = canonical
+        defaults = self._default_engine_config(canonical)["params"]
+        if self._engine_dialog_description:
+            self._engine_dialog_description.value = get_engine_metadata(canonical).description
+            self._engine_dialog_description.update()
+        if self._engine_dialog_params_column:
+            self._engine_dialog_params_column.controls = self._build_engine_param_controls(
+                canonical,
+                defaults,
+            )
+            self._engine_dialog_params_column.update()
+
+    def _build_engine_param_controls(self, engine_key: str, current_values: dict) -> list[ft.Control]:
+        meta = get_engine_metadata(engine_key)
+        controls: list[ft.Control] = []
+        if self._engine_dialog_context is None:
+            return controls
+        self._engine_dialog_context["param_controls"] = {}
+        self._engine_dialog_context["param_meta"] = {}
+        for param in meta.parameters:
+            value = current_values.get(param.name, param.default)
+            keyboard = ft.KeyboardType.NUMBER if param.type in ("int", "float") else ft.KeyboardType.TEXT
+            field = ft.TextField(
+                label=param.label,
+                value=str(value),
+                helper_text=param.help_text,
+                keyboard_type=keyboard,
+                dense=True,
+            )
+            self._engine_dialog_context["param_controls"][param.name] = field
+            self._engine_dialog_context["param_meta"][param.name] = param
+            controls.append(field)
+        return controls
+
+    def _close_engine_dialog(self, e=None):
+        if self._engine_dialog:
+            self._engine_dialog.open = False
+            self.page.update()
+        self._engine_dialog = None
+        self._engine_dialog_context = None
+        self._engine_dialog_params_column = None
+        self._engine_dialog_description = None
+
+    def _save_engine_dialog(self, e=None):
+        if not self._engine_dialog_context:
+            self._close_engine_dialog()
+            return
+        color = self._engine_dialog_context.get("color")
+        selected_raw = self._engine_dialog_context.get("selected_key") or "minimax"
+        selected_key = resolve_engine_key(selected_raw)
+        params: dict[str, object] = {}
+        for name, control in self._engine_dialog_context["param_controls"].items():
+            meta = self._engine_dialog_context["param_meta"].get(name)
+            if not meta:
+                continue
+            raw_value = control.value or ""
+            try:
+                if meta.type == "int":
+                    parsed = int(float(raw_value))
+                elif meta.type == "float":
+                    parsed = float(raw_value)
+                else:
+                    parsed = raw_value
+            except ValueError:
+                control.error_text = "Invalid value"
+                control.update()
+                return
+            if meta.min_value is not None and parsed < meta.min_value:
+                control.error_text = f"Min {meta.min_value}"
+                control.update()
+                return
+            if meta.max_value is not None and parsed > meta.max_value:
+                control.error_text = f"Max {meta.max_value}"
+                control.update()
+                return
+            control.error_text = None
+            control.update()
+            params[name] = parsed
+        if color:
+            self.ai_engine_settings[color] = {
+                "engine_key": selected_key,
+                "params": params,
+            }
+            self.log(
+                f"Settings: {self._color_label(color)} engine -> {self._engine_label(selected_key)}"
+            )
+            self.scoreboard_component.set_player_label(color, self._player_label(color))
+        self._close_engine_dialog()

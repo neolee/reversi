@@ -22,12 +22,12 @@ Develop a cross-platform Reversi game featuring a clean GUI and a powerful AI en
 - **UI Framework**: Flet (desktop/web).
 
 
-## Key Features to Implement
-- Human vs AI and AI vs AI modes.
-- Undo/Redo functionality.
-- Real-time analysis (move suggestions, win rate).
-- Game save/load (human-readable format) and replay.
-- Headless mode for simulations.
+## Key Features
+- Human vs AI and AI vs AI modes with per-color engine selection from the GUI.
+- Undo/Redo workflow that issues double `UNDO` when needed to keep Human vs AI turns aligned.
+- Real-time analysis hooks (minimax evaluation, playout engines) exposed via the metadata registry.
+- Game save/load (human-readable JSON) and replay timeline with toolbar controls.
+- Headless duel runner (`main.py duel`) to script batches of engine-vs-engine games.
 
 
 ## Coding Conventions
@@ -37,11 +37,12 @@ Develop a cross-platform Reversi game featuring a clean GUI and a powerful AI en
 
 
 ## Current Status
-- **UI**: Flet GUI with responsive board sizing, polished pieces, marker-based valid-move highlights, live score readouts, and undo/pass-aware turn handling.
+- **UI**: Flet GUI with responsive board sizing, polished pieces, marker-based valid-move highlights, live score readouts, undo/pass-aware turn handling, and scoreboard labels that track whether a side is Human or which engine is in use.
 - **Engine**: `MinimaxEngine` evaluates positions with Alpha-Beta (tunable depth); `TrivialEngine` provides a random baseline; `RustAlphaBetaEngine`, `RustThunderEngine`, and `RustMctsEngine` wrap the Rust implementation for deterministic and stochastic searches.
+- **Engine Config**: `src/reversi/engine/metadata.py` centralizes engine parameter metadata and powers both the GUI dialog and CLI helpers. `src/reversi/engine/ai_player.py` defines reusable `EngineSpec`/`EnginePlayer` helpers shared by the duel runner and upcoming GUI integration.
 - **Protocol**: Text-based command set (INIT/NEWGAME/PLAY/GENMOVE/VALID_MOVES/PASS/UNDO/BOARD/RESULT) implemented under `src/reversi/protocol`.
-- **Entry Point**: `main.py` CLI supports `--engine` (minimax/rust-alpha/rust-thunder/rust-mcts/trivial, with `rust` as an alias for rust-alpha) and `--search-depth` flags for engines that honor it (minimax and rust-alpha).
-- **Persistence**: Sidebar Save/Load buttons export/import JSON timelines, and the replay toolbar under the board replays any finished or loaded match.
+- **Entry Point**: `main.py` CLI offers `ui` (always boots the GUI with the default protocol engine and lets the sidebar configure per-color engines) plus `duel` for scripted engine-vs-engine runs with independent specs.
+- **Persistence**: Sidebar Save/Load buttons export/import JSON timelines (v2 schema), and the replay toolbar under the board replays any finished or loaded match.
 - **Dependencies**: `flet` and `rust-reversi` declared in `pyproject.toml`.
 
 
@@ -57,13 +58,14 @@ Develop a cross-platform Reversi game featuring a clean GUI and a powerful AI en
 - Undo button issues two `UNDO` commands when needed so human turns always resume correctly in Human vs AI mode.
 - Log pane autoscrolls and only re-renders itself for new messages to limit UI churn.
 - Pass button activates only when the human has no legal moves and sends `PASS <color>`; engines also auto-pass when they are out of moves, leading to a `RESULT` once both colors are stuck.
-- Live scoreboard above the board reflects disc counts in real time and states the winner when the game concludes.
-- Save/Load workflow records every board snapshot; replay controls stay disabled during live play to avoid conflicting with the engine.
+- Engine selection dialog lets each color choose/configure its engine; `ai_engine_settings` is persisted alongside player modes so replays/loadouts stay in sync.
+- CLI `ui` command no longer exposes `--engine`/`--search-depth`; the GUI is now the single source of truth for engine selection, while the duel command keeps per-side options.
+- Headless duel runner leverages the shared `EngineSpec` and metadata registry so both CLI and GUI stay aligned when adding new engines.
 
 
-## TODO
-- Design engine-vs-engine workflows: define CLI support (batch runs, match recording), clarify if/when the UI should visualize engine bouts, and outline the GUI changes needed for automated battles.
-- More options on GUI (engine, search depth, board size) and CLI (headless mode, engine-vs-engine).
+## Roadmap
+- Design spectator/visualization workflows for engine-vs-engine matches inside the GUI (live analysis overlays, match recording).
+- Expand board/engine presets to streamline tournament or teaching setups.
 - Explore auxiliary tooling such as visualizing engine analysis data to aid debugging and teaching.
 
 ## Known Issues

@@ -19,11 +19,12 @@ from reversi.cli.duel import EngineSpec, run_duel_series
 ENGINE_NAMES = sorted(get_engine_choices().keys())
 
 
+DEFAULT_PROTOCOL_ENGINE = "minimax"
+
+
 def run_ui(args: argparse.Namespace) -> None:
     print(f"Starting UI with board size {args.size}...")
-    depth = max(1, args.search_depth)
-    search_depth = depth if engine_supports_depth(args.engine) else None
-    engine = build_engine_instance(args.engine, board_size=args.size, search_depth=search_depth)
+    engine = build_engine_instance(DEFAULT_PROTOCOL_ENGINE, board_size=args.size)
     app = ReversiApp(engine, board_size=args.size)
     ft.app(target=app.main)
 
@@ -102,18 +103,6 @@ def main() -> None:
     # UI Command
     ui_parser = subparsers.add_parser("ui", help="Start the GUI")
     ui_parser.add_argument("--size", type=int, default=8, help="Board size (default: 8)")
-    ui_parser.add_argument(
-        "--engine",
-        choices=ENGINE_NAMES,
-        default="minimax",
-        help="Engine to run (default: minimax)",
-    )
-    ui_parser.add_argument(
-        "--search-depth",
-        type=int,
-        default=3,
-        help="Search depth for minimax/rust-alpha engines (default: 3)",
-    )
     ui_parser.set_defaults(func=run_ui)
 
     duel_parser = subparsers.add_parser("duel", help="Run engine vs engine duels")

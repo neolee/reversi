@@ -9,7 +9,7 @@ from reversi.engine.trivial_engine import TrivialEngine
 from reversi.engine.rust_engine import (
     RustAlphaBetaEngine,
     RustMctsEngine,
-    RustThunderEngine
+    RustThunderEngine,
 )
 
 @dataclass(frozen=True)
@@ -45,6 +45,7 @@ def build_engine_instance(
     board_size: int,
     search_depth: int | None = None,
     think_delay: float | None = None,
+    **engine_options: Any,
 ) -> BaseEngine:
     entry = ENGINE_REGISTRY.get(name)
     if not entry:
@@ -56,4 +57,6 @@ def build_engine_instance(
         kwargs["think_delay"] = think_delay
     if entry.supports_depth and search_depth is not None:
         kwargs["search_depth"] = search_depth
+    if engine_options:
+        kwargs.update(engine_options)
     return engine_cls(**kwargs)

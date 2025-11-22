@@ -7,17 +7,20 @@ class GameControlsComponent:
                  on_undo: Callable,
                  on_pass: Callable,
                  on_player_mode_change: Callable[[str, str], None],
+                 on_configure_engine: Callable[[str], None],
                  on_save: Callable,
                  on_load: Callable):
         self.on_new_game = on_new_game
         self.on_undo = on_undo
         self.on_pass = on_pass
         self.on_player_mode_change = on_player_mode_change
+        self.on_configure_engine = on_configure_engine
         self.on_save = on_save
         self.on_load = on_load
         
         self.pass_button: ft.ElevatedButton | None = None
         self.player_mode_selectors: Dict[str, ft.Dropdown] = {}
+        self.engine_buttons: Dict[str, ft.IconButton] = {}
         self.container: ft.Container | None = None
 
     def create_sidebar(self, log_view: ft.Control) -> ft.Container:
@@ -53,10 +56,19 @@ class GameControlsComponent:
                 width=140,
             )
             self.player_mode_selectors[color] = dropdown
+            config_button = ft.IconButton(
+                icon="settings",
+                tooltip="Configure engine",
+                on_click=lambda e, color=color: self.on_configure_engine(color),
+                disabled=default != "engine",
+                style=ft.ButtonStyle(padding=0),
+            )
+            self.engine_buttons[color] = config_button
             return ft.Row(
                 [
                     ft.Text(label, weight=ft.FontWeight.BOLD),
                     dropdown,
+                    config_button,
                 ],
                 alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                 spacing=8,
@@ -122,3 +134,7 @@ class GameControlsComponent:
         if selector:
             selector.value = mode
             selector.update()
+        button = self.engine_buttons.get(color)
+        if button:
+            button.disabled = mode != "engine"
+            button.update()

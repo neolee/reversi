@@ -6,35 +6,34 @@ Cross-platform Reversi with a Flet UI and pluggable engines.
 
 - Responsive GUI with marker-based valid move hints, undo-aware turn handling, and log pane streaming.
 - Text protocol (INIT/NEWGAME/PLAY/GENMOVE/UNDO/BOARD/VALID_MOVES/RESULT/PASS) between UI and engines.
-- Live scoreboard above the board shows running disc counts and declares the winner when play ends.
+- Live scoreboard above the board shows running disc counts, labels each side with the selected Human/engine, and declares the winner when play ends.
 - Sidebar controls include a Pass Turn button that becomes available when the human has no legal moves, enforcing the official rules.
 - `MinimaxEngine` uses Alpha-Beta pruning plus board cloning for strong play; `TrivialEngine` remains as a random baseline.
 - `RustAlphaBetaEngine`, `RustThunderEngine`, and `RustMctsEngine` wrap the `rust-reversi` PyPI package for deterministic alpha-beta, epsilon-greedy playout, and Monte Carlo tree search playstyles.
 - Save/Load buttons write human-readable JSON timelines, and a replay toolbar under the board lets you scrub through any finished or loaded match.
-
-## Requirements
-
-- Python 3.11+
-- [uv](https://github.com/astral-sh/uv) for dependency management
-- Desktop environment supported by [Flet](https://flet.dev)
-
-## Run the UI
+- Engine configuration is metadata-driven (`src/reversi/engine/metadata.py`) so the GUI dialog and CLI duel runner share the same parameter definitions; `src/reversi/engine/ai_player.py` exposes reusable `EngineSpec`/`EnginePlayer` helpers for automated play.
 
 ```sh
-uv run main.py ui --size 8 --engine minimax --search-depth 3
-uv run main.py ui --size 8 --engine rust-alpha --search-depth 5
+uv run main.py ui --size 8
 ```
 
-Engine switches:
-- `minimax` (default): Python engine with Alpha-Beta pruning. Tune strength with `--search-depth` (>=1).
-- `rust-alpha`: Deterministic alpha-beta powered by the `rust-reversi` crate. Shares the `--search-depth` control (>=1). Legacy flag `--engine rust` maps here.
-- `rust-thunder`: Epsilon-greedy playout search (Thunder). Ignores `--search-depth`.
-- `rust-mcts`: Monte Carlo tree search variant for more stochastic play. Ignores `--search-depth`.
-- `trivial`: Random legal moves, useful for debugging GUI/protocol flows.
+The GUI always boots with the default protocol engine and lets you pick per-color opponents from the sidebar dropdowns. Tap the gear icon next to **Black** or **White** to open the metadata-driven configuration dialog, then tweak depth/delay/epsilon/etc. as exposed by that engine's definition in `src/reversi/engine/metadata.py`. Board size remains configurable via `--size` (default 8).
 
-Board size is adjustable with `--size` (defaults to 8). Python engines honor any size; the Rust-backed engines currently support 8x8 only.
+The Controls panel includes **Save** / **Load** buttons, and the replay toolbar under the board becomes active once a game ends or after you load a saved timeline.
 
-The Controls panel now includes **Save** and **Load** buttons, and the replay toolbar under the board becomes active once a game ends or after you load a saved timeline.
+## Run Engine Duels from the CLI
+
+Use the duel command when you want fully automated match series without the GUI:
+
+```shell
+uv run main.py duel \
+  --size 8 \
+  --games 4 \
+  --black-engine minimax --black-depth 4 --black-delay 0.0 \
+  --white-engine rust-alpha --white-depth 5 --white-delay 0.1
+```
+
+Each side takes its own engine/depth/delay parameters via the shared `EngineSpec` utilities.
 
 ## Save / Load / Replay
 
@@ -46,9 +45,11 @@ The Controls panel now includes **Save** and **Load** buttons, and the replay to
 
 - GUI and engine remain fully decoupled via the text protocol, easing external engine integration.
 - Save files stay human-readable JSON for easy auditing and tooling.
-- Additional analysis tools (move suggestions, win rate) are planned once the engine is hardened.
+- The GUI now exposes per-color engine selection/configuration, replacing the older CLI flags; scoreboard labels reflect the active player type.
+- CLI duel workflows rely on `EngineSpec`/`EnginePlayer` helpers plus the metadata registry to stay in sync with the GUI dialog.
 
-## Upcoming Work
+## Roadmap
 
-- Design engine-vs-engine workflows: define CLI support (batch runs, match recording), clarify if/when the UI should visualize engine bouts, and outline the GUI changes needed for automated battles.
-- Explore auxiliary tooling such as visualizing engine analysis data to aid debugging and teaching.
+- Headless/automated engine-vs-engine workflows inside the GUI (batch runs, match recording, spectator view).
+- Additional analysis tooling (move suggestions, win-rate overlays) to aid debugging and teaching.
+- Optional board-size and engine presets synced between CLI and GUI for one-click tournament setups.
