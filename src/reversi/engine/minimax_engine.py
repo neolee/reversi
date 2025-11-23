@@ -34,18 +34,21 @@ class MinimaxEngine(BaseEngine):
         valid_moves: Iterable[Tuple[int, int]],
     ) -> Optional[Tuple[int, int]]:
         self._search_color = color
-        move_scores = self._score_moves(board_snapshot, color)
+        move_scores = self._score_moves(board_snapshot, color, check_analyzing=False)
         if not move_scores:
             return None
         return self._select_weighted_move(move_scores)
 
-    def _score_moves(self, board_snapshot: Board, color: str) -> List[Tuple[Tuple[int, int], float]]:
+    def _score_moves(self, board_snapshot: Board, color: str, check_analyzing: bool = False) -> List[Tuple[Tuple[int, int], float]]:
         moves = board_snapshot.get_valid_moves(color)
         if not moves:
             return []
 
         move_scores: List[Tuple[Tuple[int, int], float]] = []
         for move in moves:
+            if check_analyzing and not self._analyzing:
+                break
+
             child = board_snapshot.clone()
             child.play_move(move[0], move[1], color)
             _, score = self._minimax(
@@ -159,4 +162,4 @@ class MinimaxEngine(BaseEngine):
         # Use a snapshot to avoid race conditions if the board changes
         board_snapshot = self.board.clone()
         self._search_color = color
-        return self._score_moves(board_snapshot, color)
+        return self._score_moves(board_snapshot, color, check_analyzing=True)

@@ -45,12 +45,23 @@ class EngineConfigDialog:
             if is_human:
                 config["enabled"] = False
 
+        # Filter engines if is_human (analysis mode)
+        available_engines = list_engine_metadata()
+        if is_human:
+            available_engines = [meta for meta in available_engines if meta.supports_analysis]
+
         selected_key = resolve_engine_key(config.get("engine_key", "minimax"))
-        initial_params = dict(config.get("params", {}))
+        # Ensure selected key is valid for this mode
+        if is_human and not get_engine_metadata(selected_key).supports_analysis:
+            selected_key = "minimax"
+            initial_params = self._default_config("minimax")["params"]
+        else:
+            initial_params = dict(config.get("params", {}))
+
         analysis_enabled = config.get("enabled", False) if is_human else True
 
         dropdown = ft.Dropdown(
-            options=[ft.dropdown.Option(meta.key, meta.label) for meta in list_engine_metadata()],
+            options=[ft.dropdown.Option(meta.key, meta.label) for meta in available_engines],
             value=selected_key,
             dense=True,
             on_change=lambda e: self._handle_engine_choice_change(e.control.value),
@@ -62,7 +73,8 @@ class EngineConfigDialog:
             "param_controls": {},
             "param_meta": {},
             "is_human": is_human,
-            "analysis_enabled": analysis_enabled
+            "analysis_enabled": analysis_enabled,
+            "think_delay_control": None,
         }
 
         self._description = ft.Text(
@@ -76,18 +88,33 @@ class EngineConfigDialog:
             spacing=8,
         )
 
+        config_controls = [
+            dropdown,
+            self._description,
+            ft.Divider(height=1),
+        ]
+
+        # Add think_delay control if not analysis mode
+        if not is_human:
+            current_delay = initial_params.get("think_delay", get_engine_metadata(selected_key).default_think_delay)
+            think_delay_control = ft.TextField(
+                label="Think Delay (s)",
+                value=str(current_delay),
+                keyboard_type=ft.KeyboardType.NUMBER,
+                dense=True,
+            )
+            self._context["think_delay_control"] = think_delay_control
+            config_controls.append(think_delay_control)
+
+        config_controls.append(self._params_column)
+
         self._engine_config_container = ft.Column(
-            [
-                dropdown,
-                self._description,
-                ft.Divider(height=1),
-                self._params_column,
-            ],
+            config_controls,
             spacing=12,
             visible=analysis_enabled
         )
 
-        dialog_content_controls = [
+        dialog_content_controls: list[ft.Control] = [
             ft.Text(f"{self._color_label(color)} {'Analysis' if is_human else 'Engine'}", size=18, weight=ft.FontWeight.BOLD),
         ]
 
@@ -101,7 +128,8 @@ class EngineConfigDialog:
             self._context["enable_switch"] = enable_switch
             dialog_content_controls.append(enable_switch)
 
-        dialog_content_controls.append(self._engine_config_container)
+        if self._engine_config_container:
+            dialog_content_controls.append(self._engine_config_container)
 
         content = ft.Column(
             dialog_content_controls,
@@ -136,10 +164,20 @@ class EngineConfigDialog:
         canonical = resolve_engine_key(engine_key)
         self._context["selected_key"] = canonical
         defaults = self._default_config(canonical)["params"]
+        meta = get_engine_metadata(canonical)
+
         if self._description:
-            self._description.value = get_engine_metadata(canonical).description
+            self._description.value = meta.description
             if self._description.page:
                 self._description.update()
+
+        # Update think_delay default if control exists
+        think_delay_control = self._context.get("think_delay_control")
+        if think_delay_control:
+            think_delay_control.value = str(meta.default_think_delay)
+            if think_delay_control.page:
+                think_delay_control.update()
+
         if self._params_column:
             self._params_column.controls = self._build_param_controls(canonical, defaults)
             if self._params_column.page:
@@ -152,7 +190,13 @@ class EngineConfigDialog:
             return controls
         self._context["param_controls"] = {}
         self._context["param_meta"] = {}
+
+        is_analysis = self._context.get("is_human", False)
+
         for param in meta.parameters:
+            if is_analysis and param.auto_managed_in_analysis:
+                continue
+
             value = current_values.get(param.name, param.default)
             keyboard = ft.KeyboardType.NUMBER if param.type in ("int", "float") else ft.KeyboardType.TEXT
             field = ft.TextField(
@@ -187,6 +231,24 @@ class EngineConfigDialog:
         selected_raw = self._context.get("selected_key") or "minimax"
         selected_key = resolve_engine_key(selected_raw)
         params: dict[str, object] = {}
+
+        # Handle think_delay
+        think_delay_control = self._context.get("think_delay_control")
+        if think_delay_control:
+            try:
+                delay_val = float(think_delay_control.value or "0")
+                if delay_val < 0:
+                    think_delay_control.error_text = "Min 0.0"
+                    if think_delay_control.page:
+                        think_delay_control.update()
+                    return
+                params["think_delay"] = delay_val
+            except ValueError:
+                think_delay_control.error_text = "Invalid value"
+                if think_delay_control.page:
+                    think_delay_control.update()
+                return
+
         for name, control in self._context.get("param_controls", {}).items():
             meta = self._context.get("param_meta", {}).get(name)
             if not meta:

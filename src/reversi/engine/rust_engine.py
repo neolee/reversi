@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import logging
 from abc import ABC, abstractmethod
 from typing import Any, Iterable, Optional, Tuple
 
 from reversi.engine.base_engine import BaseEngine
 from reversi.engine.board import Board as PyBoard
+from reversi.engine.process_pool import get_executor
+
+logger = logging.getLogger(__name__)
 
 try:
     from rust_reversi import (
@@ -18,6 +22,20 @@ try:
     )
 except ImportError as exc:  # pragma: no cover - handled at runtime
     raise ImportError("RustReversiEngine requires the 'rust-reversi' package") from exc
+
+
+def _run_rust_analysis(engine_cls, init_kwargs, board_snapshot, color):
+    """Worker function to run analysis in a separate process."""
+    try:
+        # Re-instantiate engine
+        engine = engine_cls(**init_kwargs)
+        # Inject the board state
+        engine.board = board_snapshot
+        # Call the synchronous implementation
+        return engine._analyze_impl(color)
+    except Exception:
+        logger.exception("Error in Rust analysis worker")
+        raise
 
 
 class BaseRustSearchEngine(BaseEngine, ABC):
@@ -60,6 +78,98 @@ class BaseRustSearchEngine(BaseEngine, ABC):
     @abstractmethod
     def _create_search(self) -> Any:
         """Return a rust_reversi searcher ready to evaluate positions."""
+
+    def analyze(self, color: str) -> list[tuple[tuple[int, int], float]]:
+        """
+        Run analysis in a separate process to avoid blocking the UI thread.
+        This is necessary because rust-reversi functions might hold the GIL.
+        """
+        executor = get_executor()
+
+        # Prepare init kwargs for reconstruction
+        init_kwargs = self._get_init_kwargs()
+
+        # If iterative deepening updated search_depth, pass it along
+        if hasattr(self, "search_depth"):
+            init_kwargs["search_depth"] = self.search_depth
+
+        future = executor.submit(
+            _run_rust_analysis,
+            self.__class__,
+            init_kwargs,
+            self.board,  # Board is picklable
+            color,
+        )
+
+        # Wait for result (releases GIL)
+        try:
+            return future.result()
+        except Exception:
+            logger.exception("Error waiting for Rust analysis result")
+            return []
+
+    def _analyze_impl(self, color: str) -> list[tuple[tuple[int, int], float]]:
+        """Synchronous implementation of analysis logic."""
+        valid_moves = self.board.get_valid_moves(color)
+        if not valid_moves:
+            return []
+
+        results = []
+        search = self._create_search()
+
+        for r, c in valid_moves:
+            # Clone and play move
+            board_snapshot = self.board.clone()
+            board_snapshot.play_move(r, c, color)
+
+            # Determine next player and check for game over/pass
+            next_player = board_snapshot.current_player
+
+            # If next player has no moves
+            if not board_snapshot.has_valid_move(next_player):
+                # Try to pass
+                if board_snapshot.pass_turn(next_player):
+                    # Passed. Now it is 'color' turn again (or whoever is next)
+                    pass
+                else:
+                    # Game Over
+                    score = self._get_terminal_score(board_snapshot, color)
+                    results.append(((r, c), score))
+                    continue
+
+            # Build Rust board for the current state (after move and potential pass)
+            current_turn_color = board_snapshot.current_player
+            rust_board = self._build_rust_board(board_snapshot, current_turn_color)
+
+            try:
+                raw_score = search.get_search_score(rust_board)
+                if raw_score is None:
+                    continue
+
+                # raw_score is for current_turn_color.
+                # We want score for 'color'.
+                if current_turn_color == color:
+                    my_score = raw_score
+                else:
+                    my_score = self._invert_score(raw_score)
+                results.append(((r, c), my_score))
+            except Exception:
+                logger.exception("Error getting search score from Rust")
+                pass
+
+        return results
+
+    @abstractmethod
+    def _get_init_kwargs(self) -> dict:
+        """Return kwargs needed to reconstruct this engine instance."""
+
+    @abstractmethod
+    def _invert_score(self, score: float) -> float:
+        """Invert score from opponent's perspective to ours."""
+
+    @abstractmethod
+    def _get_terminal_score(self, board: PyBoard, color: str) -> float:
+        """Calculate terminal score for the given color."""
 
     # ------------------------------------------------------------------
     # Rust board helpers
@@ -109,6 +219,27 @@ class RustAlphaBetaEngine(BaseRustSearchEngine):
     def _create_search(self):
         return AlphaBetaSearch(self._piece_evaluator, self.search_depth, self._win_score)
 
+    def _get_init_kwargs(self) -> dict:
+        return {
+            "board_size": self.board_size,
+            "search_depth": self.search_depth,
+            "think_delay": self.think_delay,
+            "win_score": self._win_score,
+        }
+
+    def _invert_score(self, score: float) -> float:
+        return -score
+
+    def _get_terminal_score(self, board: PyBoard, color: str) -> float:
+        scores = board.get_score()
+        my_score = scores[color]
+        opp_score = scores[PyBoard.WHITE if color == PyBoard.BLACK else PyBoard.BLACK]
+        if my_score > opp_score:
+            return float(self._win_score)
+        elif my_score < opp_score:
+            return -float(self._win_score)
+        return 0.0
+
 
 class RustThunderEngine(BaseRustSearchEngine):
     """Epsilon-greedy playout searcher (Thunder)."""
@@ -123,9 +254,33 @@ class RustThunderEngine(BaseRustSearchEngine):
         super().__init__(board_size=board_size, think_delay=think_delay)
         self.playouts = max(1, playouts)
         self.epsilon = max(0.0, min(1.0, epsilon))
+        # Disable iterative deepening in BaseEngine analysis loop
+        if hasattr(self, "search_depth"):
+            del self.search_depth
 
     def _create_search(self):
         return ThunderSearch(self._winrate_evaluator, self.playouts, self.epsilon)
+
+    def _get_init_kwargs(self) -> dict:
+        return {
+            "board_size": self.board_size,
+            "think_delay": self.think_delay,
+            "playouts": self.playouts,
+            "epsilon": self.epsilon,
+        }
+
+    def _invert_score(self, score: float) -> float:
+        return 1.0 - score
+
+    def _get_terminal_score(self, board: PyBoard, color: str) -> float:
+        scores = board.get_score()
+        my_score = scores[color]
+        opp_score = scores[PyBoard.WHITE if color == PyBoard.BLACK else PyBoard.BLACK]
+        if my_score > opp_score:
+            return 1.0
+        elif my_score < opp_score:
+            return 0.0
+        return 0.5
 
 
 class RustMctsEngine(BaseRustSearchEngine):
@@ -143,6 +298,9 @@ class RustMctsEngine(BaseRustSearchEngine):
         self.playouts = max(1, playouts)
         self.exploration_constant = max(1e-6, exploration_constant)
         self.expand_threshold = max(1, expand_threshold)
+        # Disable iterative deepening in BaseEngine analysis loop
+        if hasattr(self, "search_depth"):
+            del self.search_depth
 
     def _create_search(self):
         return MctsSearch(
@@ -150,3 +308,25 @@ class RustMctsEngine(BaseRustSearchEngine):
             self.exploration_constant,
             self.expand_threshold,
         )
+
+    def _get_init_kwargs(self) -> dict:
+        return {
+            "board_size": self.board_size,
+            "think_delay": self.think_delay,
+            "playouts": self.playouts,
+            "exploration_constant": self.exploration_constant,
+            "expand_threshold": self.expand_threshold,
+        }
+
+    def _invert_score(self, score: float) -> float:
+        return 1.0 - score
+
+    def _get_terminal_score(self, board: PyBoard, color: str) -> float:
+        scores = board.get_score()
+        my_score = scores[color]
+        opp_score = scores[PyBoard.WHITE if color == PyBoard.BLACK else PyBoard.BLACK]
+        if my_score > opp_score:
+            return 1.0
+        elif my_score < opp_score:
+            return 0.0
+        return 0.5

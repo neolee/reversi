@@ -15,6 +15,7 @@ class EngineParamMetadata:
     step: float | None = None
     choices: List[tuple[str, str]] | None = None
     help_text: str | None = None
+    auto_managed_in_analysis: bool = False
 
 
 @dataclass(frozen=True)
@@ -24,6 +25,8 @@ class EngineMetadata:
     description: str
     parameters: List[EngineParamMetadata]
     alias_for: str | None = None
+    supports_analysis: bool = True
+    default_think_delay: float = 0.1
 
 
 ENGINE_METADATA: Dict[str, EngineMetadata] = {
@@ -31,6 +34,7 @@ ENGINE_METADATA: Dict[str, EngineMetadata] = {
         key="minimax",
         label="Python Minimax",
         description="Built-in minimax engine with alpha-beta pruning and light randomization.",
+        default_think_delay=0.2,
         parameters=[
             EngineParamMetadata(
                 name="search_depth",
@@ -39,15 +43,7 @@ ENGINE_METADATA: Dict[str, EngineMetadata] = {
                 default=3,
                 min_value=1,
                 max_value=8,
-            ),
-            EngineParamMetadata(
-                name="think_delay",
-                label="Think Delay (s)",
-                type="float",
-                default=0.2,
-                min_value=0.0,
-                max_value=5.0,
-                step=0.1,
+                auto_managed_in_analysis=True,
             ),
             EngineParamMetadata(
                 name="selection_top_k",
@@ -73,6 +69,7 @@ ENGINE_METADATA: Dict[str, EngineMetadata] = {
         key="rust-alpha",
         label="Rust AlphaBeta",
         description="Deterministic alpha-beta search implemented in Rust.",
+        default_think_delay=0.05,
         parameters=[
             EngineParamMetadata(
                 name="search_depth",
@@ -81,15 +78,7 @@ ENGINE_METADATA: Dict[str, EngineMetadata] = {
                 default=5,
                 min_value=1,
                 max_value=10,
-            ),
-            EngineParamMetadata(
-                name="think_delay",
-                label="Think Delay (s)",
-                type="float",
-                default=0.05,
-                min_value=0.0,
-                max_value=5.0,
-                step=0.05,
+                auto_managed_in_analysis=True,
             ),
             EngineParamMetadata(
                 name="win_score",
@@ -106,16 +95,8 @@ ENGINE_METADATA: Dict[str, EngineMetadata] = {
         key="rust-thunder",
         label="Rust Thunder",
         description="Epsilon-greedy playout search with randomness.",
+        default_think_delay=0.05,
         parameters=[
-            EngineParamMetadata(
-                name="think_delay",
-                label="Think Delay (s)",
-                type="float",
-                default=0.05,
-                min_value=0.0,
-                max_value=5.0,
-                step=0.05,
-            ),
             EngineParamMetadata(
                 name="playouts",
                 label="Playouts",
@@ -140,16 +121,8 @@ ENGINE_METADATA: Dict[str, EngineMetadata] = {
         key="rust-mcts",
         label="Rust MCTS",
         description="Monte Carlo tree search variant from rust-reversi.",
+        default_think_delay=0.05,
         parameters=[
-            EngineParamMetadata(
-                name="think_delay",
-                label="Think Delay (s)",
-                type="float",
-                default=0.05,
-                min_value=0.0,
-                max_value=5.0,
-                step=0.05,
-            ),
             EngineParamMetadata(
                 name="playouts",
                 label="Playouts",
@@ -181,17 +154,9 @@ ENGINE_METADATA: Dict[str, EngineMetadata] = {
         key="trivial",
         label="Trivial Random",
         description="Random legal move generator useful for debugging.",
-        parameters=[
-            EngineParamMetadata(
-                name="think_delay",
-                label="Think Delay (s)",
-                type="float",
-                default=0.1,
-                min_value=0.0,
-                max_value=5.0,
-                step=0.05,
-            ),
-        ],
+        supports_analysis=False,
+        default_think_delay=0.1,
+        parameters=[],
     ),
 }
 
