@@ -94,6 +94,7 @@ class ReversiApp:
         self._board_area_padding_v = 16.0
         self._board_column_spacing = 16.0
         self.current_analysis_engine = None
+        self._analysis_engine_signature: tuple[str, tuple[tuple[str, object], ...]] | None = None
 
     # ------------------------------------------------------------------
     # Main UI Entry Point
@@ -445,6 +446,7 @@ class ReversiApp:
     # ------------------------------------------------------------------
     def on_new_game(self, e):
         self.log("GUI: Starting New Game...")
+        self._stop_current_analysis()
         self.game_started = True
         self.replay_controller.reset()
         self._reset_timeline()
@@ -474,8 +476,7 @@ class ReversiApp:
             return
 
         # Stop analysis immediately on click
-        if self.current_analysis_engine:
-            self.current_analysis_engine.stop_analysis()
+        self._stop_current_analysis()
 
         self._pending_move_context = {"color": self.current_turn, "coord": coord, "type": "move"}
         self.log(f"GUI: Clicked {coord}")
@@ -488,8 +489,7 @@ class ReversiApp:
             return
 
         # Stop analysis immediately on pass
-        if self.current_analysis_engine:
-            self.current_analysis_engine.stop_analysis()
+        self._stop_current_analysis()
 
         self.log("GUI: Requesting PASS")
         self.controls_component.set_pass_disabled(True)
@@ -590,6 +590,7 @@ class ReversiApp:
         return game_state_serializer.serialize(snapshot)
 
     def _apply_loaded_data(self, data: dict):
+        self._stop_current_analysis()
         loaded_state = game_state_serializer.deserialize(
             data,
             board_size=self.board_size,
@@ -630,8 +631,7 @@ class ReversiApp:
     # ------------------------------------------------------------------
     def _trigger_analysis_if_needed(self):
         # Stop any existing analysis first
-        if self.current_analysis_engine:
-            self.current_analysis_engine.stop_analysis()
+        self._stop_current_analysis()
 
         if not self.game_started or not self._is_human_player(self.current_turn):
             return
@@ -644,26 +644,26 @@ class ReversiApp:
             return
 
         try:
-            engine_key = config.get("engine_key", "minimax")
+            engine_key = resolve_engine_key(config.get("engine_key", "minimax"))
             params = dict(config.get("params", {}))
 
             # Force think_delay to 0 for analysis
             params["think_delay"] = 0.0
 
-            # Reuse engine if possible to save init time
-            # We check if the key matches. Ideally we should check params too,
-            # but since we overwrite search_depth anyway, it's mostly fine.
-            # For safety, we recreate if key changes.
-            if not self.current_analysis_engine or getattr(self.current_analysis_engine, "_engine_key", None) != engine_key:
+            signature = self._build_analysis_signature(engine_key, params)
+
+            # Reuse engine only when both key and parameters match
+            if (
+                not self.current_analysis_engine
+                or self._analysis_engine_signature != signature
+            ):
                 self.current_analysis_engine = build_engine_instance(
                     engine_key,
                     board_size=self.board_size,
-                    **params
+                    **params,
                 )
-                # Tag it so we know what it is
-                self.current_analysis_engine._engine_key = engine_key
-                # Set callback to route messages to our handler
                 self.current_analysis_engine.set_callback(self.handle_engine_message)
+                self._analysis_engine_signature = signature
 
             # Update board state
             board = board_from_state_string(self.board_size, self.current_board_state_str, self.current_turn)
@@ -739,14 +739,22 @@ class ReversiApp:
                 "engine_key": resolve_engine_key(engine_key),
                 "params": params,
             }
-            # Trigger analysis if it's currently this player's turn
-            if self.game_started and self.current_turn == color and enabled:
-                self._trigger_analysis_if_needed()
-            elif self.game_started and self.current_turn == color and not enabled:
-                self.board_component.clear_analysis()
+            if self.game_started and self.current_turn == color:
+                if enabled:
+                    self._trigger_analysis_if_needed()
+                else:
+                    self._stop_current_analysis()
+                    self.board_component.clear_analysis()
         else:
             self.ai_engine_settings[color] = {
                 "engine_key": resolve_engine_key(engine_key),
                 "params": params,
             }
             self.scoreboard_component.set_player_label(color, self._player_label(color))
+
+    def _stop_current_analysis(self):
+        if self.current_analysis_engine:
+            self.current_analysis_engine.stop_analysis()
+
+    def _build_analysis_signature(self, engine_key: str, params: dict[str, object]) -> tuple[str, tuple[tuple[str, object], ...]]:
+        return (engine_key, tuple(sorted(params.items())))
