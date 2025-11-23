@@ -62,3 +62,4 @@ Develop a cross-platform Reversi game featuring a clean GUI and a powerful AI en
 ## Known Issues
 - **Flet FilePicker Bug**: Flet version 0.28.3 has a bug where the FilePicker dialog does not appear. This is fixed in 0.28.2 (rollback required) or future versions.
 - **Rust Alpha Analysis Shutdown**: When `rust-alpha` is selected as the human analysis engine, closing the GUI can raise `RuntimeError: Event loop is closed`. Multiple mitigations failed; treat it as a noisy-but-harmless shutdown error.
+  - **Command-Q Shutdown Gap**: The new shutdown protects dialog normal window closes, but OS-level quit shortcuts still bypass the hook and can terminate the app while engines are tearing down; avoid that until Flet exposes a global close event.

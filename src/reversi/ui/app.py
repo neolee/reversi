@@ -12,6 +12,7 @@ from reversi.ui.components import game_state_serializer
 from reversi.engine.metadata import get_engine_metadata, resolve_engine_key
 from reversi.engine.registry import build_engine_instance
 from reversi.engine.ai_player import board_from_state_string
+from reversi.engine.process_pool import shutdown_executor
 
 
 class ReversiApp:
@@ -95,6 +96,8 @@ class ReversiApp:
         self._board_column_spacing = 16.0
         self.current_analysis_engine = None
         self._analysis_engine_signature: tuple[str, tuple[tuple[str, object], ...]] | None = None
+        self._is_shutting_down = False
+        self._shutdown_dialog: ft.AlertDialog | None = None
 
     # ------------------------------------------------------------------
     # Main UI Entry Point
@@ -106,6 +109,8 @@ class ReversiApp:
         page.window.width = 1180
         page.window.height = 900
         page.padding = 20
+        page.window.prevent_close = True
+        page.window.on_event = self._handle_window_event
 
         self.persistence_manager.register_pickers(page.overlay)
 
@@ -174,6 +179,7 @@ class ReversiApp:
             )
         )
 
+        page.window.center()
         page.update()
         self.adjust_board_size()
 
@@ -752,9 +758,100 @@ class ReversiApp:
             }
             self.scoreboard_component.set_player_label(color, self._player_label(color))
 
-    def _stop_current_analysis(self):
-        if self.current_analysis_engine:
+    def _stop_current_analysis(self, *, dispose_engine: bool = False):
+        if not self.current_analysis_engine:
+            return
+        try:
             self.current_analysis_engine.stop_analysis()
+        except Exception:
+            pass
+        if dispose_engine:
+            try:
+                self.current_analysis_engine.stop()
+            except Exception:
+                pass
+            self.current_analysis_engine = None
+            self._analysis_engine_signature = None
 
     def _build_analysis_signature(self, engine_key: str, params: dict[str, object]) -> tuple[str, tuple[tuple[str, object], ...]]:
         return (engine_key, tuple(sorted(params.items())))
+
+    # ------------------------------------------------------------------
+    # Shutdown handling
+    # ------------------------------------------------------------------
+    def _handle_window_event(self, e: ft.ControlEvent):
+        if e.data == "close":
+            self._request_shutdown()
+
+    def _request_shutdown(self):
+        if not self.page or self._is_shutting_down:
+            return
+        self.page.run_task(self._begin_shutdown_sequence)
+
+    async def _begin_shutdown_sequence(self):
+        if self._is_shutting_down:
+            return
+        self._is_shutting_down = True
+        self._show_shutdown_dialog()
+        await self._shutdown_engines()
+        self._hide_shutdown_dialog()
+        self.page.window.prevent_close = False
+        self.page.window.destroy()
+
+    def _show_shutdown_dialog(self):
+        page = getattr(self, "page", None)
+        if not page:
+            return
+        if self._shutdown_dialog:
+            self._shutdown_dialog.open = True
+            page.update()
+            return
+        self._shutdown_dialog = ft.AlertDialog(
+            modal=True,
+            content=ft.Container(
+                content=ft.Column(
+                    [
+                        ft.Text(
+                            "Shutting down engine, please wait...",
+                            weight=ft.FontWeight.BOLD,
+                            text_align=ft.TextAlign.CENTER,
+                        ),
+                        ft.Container(
+                            content=ft.ProgressRing(width=28, height=28),
+                            margin=ft.margin.only(top=12),
+                        ),
+                    ],
+                    spacing=8,
+                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                    alignment=ft.MainAxisAlignment.CENTER,
+                    tight=True,
+                ),
+                width=260,
+                padding=ft.padding.all(16),
+            ),
+        )
+        page.overlay.append(self._shutdown_dialog)
+        self._shutdown_dialog.open = True
+        page.update()
+
+    def _hide_shutdown_dialog(self):
+        page = getattr(self, "page", None)
+        if self._shutdown_dialog and page:
+            self._shutdown_dialog.open = False
+            page.update()
+        self._shutdown_dialog = None
+
+    async def _shutdown_engines(self):
+        self.log("System: Shutting down engines...")
+        self._stop_current_analysis(dispose_engine=True)
+        if self.engine:
+            try:
+                self.engine.stop()
+            except Exception as exc:
+                self.log(f"Shutdown warning: {exc}")
+        # Allow callbacks to flush
+        await asyncio.sleep(0.05)
+        try:
+            await asyncio.to_thread(shutdown_executor, True)
+        except Exception as exc:
+            self.log(f"Executor shutdown warning: {exc}")

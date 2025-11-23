@@ -63,3 +63,4 @@ Each side takes its own engine/depth/delay parameters via the shared `EngineSpec
 
 - Flet 0.28.3 still has a FilePicker regression where dialogs may not appear; downgrade to 0.28.2 or upgrade once upstream releases a fix.
 - When `rust-alpha` is selected as the human analysis engine, closing the GUI can raise `RuntimeError: Event loop is closed`. Multiple mitigations were attempted but the exception still surfaces sporadically during shutdown.
+  - The shutdown dialog now intercepts window close events and keeps engine teardown orderly, but OS-level quit shortcuts still bypass the hook and can kill the app mid-shutdown; avoid that until Flet exposes a reliable interception point.
