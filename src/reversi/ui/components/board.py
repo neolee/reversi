@@ -12,6 +12,7 @@ class BoardComponent:
         self.cell_containers = {} # Map coord -> Cell Container
         self.cell_base_colors = {}
         self.highlight_markers = {}
+        self.analysis_labels = {} # Map coord -> Text Control
         self.board_grid = None
         self._current_valid_moves = []
 
@@ -49,8 +50,26 @@ class BoardComponent:
                     animate_opacity=300
                 )
 
+                # Analysis Label
+                analysis_label = ft.Text(
+                    value="",
+                    size=max(8, int(self.cell_size * 0.22)),
+                    color="white",
+                    weight=ft.FontWeight.BOLD,
+                    opacity=0,
+                    animate_opacity=300,
+                    text_align=ft.TextAlign.CENTER,
+                    style=ft.TextStyle(
+                        shadow=ft.BoxShadow(
+                            blur_radius=2,
+                            color="black",
+                            offset=ft.Offset(1, 1)
+                        )
+                    )
+                )
+
                 stack = ft.Stack(
-                    [piece, marker],
+                    [piece, marker, analysis_label],
                     alignment=ft.alignment.center
                 )
 
@@ -69,6 +88,7 @@ class BoardComponent:
                 self.cell_containers[coord] = cell
                 self.cell_base_colors[coord] = base_color
                 self.highlight_markers[coord] = marker
+                self.analysis_labels[coord] = analysis_label
                 row_controls.append(cell)
             rows.append(ft.Row(row_controls, spacing=0, tight=True))
 
@@ -148,6 +168,10 @@ class BoardComponent:
                 marker.height = marker_size
                 marker.border_radius = marker_size / 2
 
+            label = self.analysis_labels.get(coord)
+            if label:
+                label.size = max(8, int(self.cell_size * 0.22))
+
         if self.board_grid:
             self.board_grid.update()
 
@@ -158,6 +182,7 @@ class BoardComponent:
 
         # Clear highlights
         self.highlight_valid_moves([])
+        self.clear_analysis()
 
         # Initial position (center 4 pieces)
         mid = self.board_size // 2
@@ -170,3 +195,23 @@ class BoardComponent:
         self.update_piece(f"{c2}{r2}", "WHITE")
         self.update_piece(f"{c2}{r1}", "BLACK")
         self.update_piece(f"{c1}{r2}", "BLACK")
+
+    def show_analysis(self, scores: dict[str, str]):
+        """Display analysis scores on the board."""
+        for coord, label in self.analysis_labels.items():
+            if coord in scores:
+                label.value = scores[coord]
+                label.opacity = 1
+            else:
+                label.value = ""
+                label.opacity = 0
+        if self.board_grid:
+            self.board_grid.update()
+
+    def clear_analysis(self):
+        """Clear all analysis labels."""
+        for label in self.analysis_labels.values():
+            label.value = ""
+            label.opacity = 0
+        if self.board_grid:
+            self.board_grid.update()

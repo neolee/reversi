@@ -139,7 +139,7 @@ class MinimaxEngine(BaseEngine):
 
         corner_score = self._corner_heuristic(board, self._search_color) - self._corner_heuristic(board, opponent)
 
-        return disc_balance * 1.5 + mobility * 5 + corner_score * 25
+        return disc_balance * 1.5 + mobility * 2.0 + corner_score * 25
 
     def _corner_heuristic(self, board: Board, player: str) -> int:
         corners = [
@@ -154,3 +154,9 @@ class MinimaxEngine(BaseEngine):
             if piece == player:
                 score += 1
         return score
+
+    def analyze(self, color: str) -> List[Tuple[Tuple[int, int], float]]:
+        # Use a snapshot to avoid race conditions if the board changes
+        board_snapshot = self.board.clone()
+        self._search_color = color
+        return self._score_moves(board_snapshot, color)

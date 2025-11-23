@@ -6,6 +6,7 @@ class Command:
     UNDO = "UNDO"
     BOARD = "BOARD"     # Request board state
     VALID_MOVES = "VALID_MOVES" # Request valid moves
+    ANALYZE = "ANALYZE" # ANALYZE <color>
     PASS = "PASS"       # PASS <color> - pass a turn when no moves
     QUIT = "QUIT"
 
@@ -17,6 +18,7 @@ class Response:
     PASS = "PASS"
     BOARD = "BOARD"     # BOARD <size> <current_player> <state_string>
     VALID_MOVES = "VALID_MOVES" # VALID_MOVES <coord1> <coord2> ...
+    ANALYSIS = "ANALYSIS" # ANALYSIS <coord1>:<score1> <coord2>:<score2> ...
     ERROR = "ERROR"     # ERROR <msg>
     INFO = "INFO"       # INFO <key> <value> (e.g., INFO SCORE_BLACK 2)
     RESULT = "RESULT"   # RESULT <winner>

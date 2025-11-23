@@ -10,6 +10,8 @@ from reversi.ui.components.controls import GameControlsComponent
 from reversi.ui.components.engine_dialog import EngineConfigDialog
 from reversi.ui.components import game_state_serializer
 from reversi.engine.metadata import get_engine_metadata, resolve_engine_key
+from reversi.engine.registry import build_engine_instance
+from reversi.engine.ai_player import board_from_state_string
 
 
 class ReversiApp:
@@ -24,6 +26,10 @@ class ReversiApp:
         self.ai_engine_settings = {
             "BLACK": self._default_engine_config("minimax"),
             "WHITE": self._default_engine_config("rust-alpha"),
+        }
+        self.human_analysis_settings = {
+            "BLACK": {"enabled": False, "engine_key": "minimax", "params": self._default_engine_config("minimax")["params"]},
+            "WHITE": {"enabled": False, "engine_key": "minimax", "params": self._default_engine_config("minimax")["params"]},
         }
         self.engine_dialog = EngineConfigDialog(
             page_getter=lambda: getattr(self, "page", None),
@@ -68,6 +74,7 @@ class ReversiApp:
         # UI State
         self.log_view = ft.ListView(expand=True, spacing=4, padding=0, auto_scroll=True)
         self.current_turn = "BLACK"
+        self.current_board_state_str = None
         self._update_primary_roles()
         self.game_started = False
         self.undo_expect_updates = 0
@@ -86,7 +93,11 @@ class ReversiApp:
         self._board_area_padding_h = 16.0
         self._board_area_padding_v = 16.0
         self._board_column_spacing = 16.0
+        self.current_analysis_engine = None
 
+    # ------------------------------------------------------------------
+    # Main UI Entry Point
+    # ------------------------------------------------------------------
     def main(self, page: ft.Page):
         self.page = page
         page.title = "Reversi"
@@ -176,6 +187,9 @@ class ReversiApp:
 
         page.run_task(self._monitor_viewport)
 
+    # ------------------------------------------------------------------
+    # Event Handlers
+    # ------------------------------------------------------------------
     def on_player_mode_change(self, color: str, mode: str):
         if color not in self.player_modes:
             return
@@ -197,12 +211,25 @@ class ReversiApp:
     def on_configure_engine(self, color: str):
         if not getattr(self, "page", None):
             return
-        config = self.ai_engine_settings.get(color)
-        if not config:
-            config = self._default_engine_config("minimax")
-            self.ai_engine_settings[color] = config
-        self.engine_dialog.open(color, config)
 
+        is_human = self._is_human_player(color)
+        if is_human:
+            config = self.human_analysis_settings.get(color)
+            if not config:
+                # Should be initialized in __init__, but just in case
+                config = {"enabled": False, "engine_key": "minimax", "params": self._default_engine_config("minimax")["params"]}
+                self.human_analysis_settings[color] = config
+        else:
+            config = self.ai_engine_settings.get(color)
+            if not config:
+                config = self._default_engine_config("minimax")
+                self.ai_engine_settings[color] = config
+
+        self.engine_dialog.open(color, config, is_human=is_human)
+
+    # ------------------------------------------------------------------
+    # Layout & Resizing
+    # ------------------------------------------------------------------
     def adjust_board_size(self, width: float | None = None, height: float | None = None):
         if not getattr(self, "page", None) or not self.board_wrapper:
             return
@@ -271,6 +298,9 @@ class ReversiApp:
                     prev_w, prev_h = current_w, current_h
             await asyncio.sleep(0.25)
 
+    # ------------------------------------------------------------------
+    # UI State Management
+    # ------------------------------------------------------------------
     def reset_board_ui(self):
         self.board_component.reset()
         self.current_turn = "BLACK"
@@ -284,6 +314,9 @@ class ReversiApp:
         )
         self.log_view.update()
 
+    # ------------------------------------------------------------------
+    # Engine Communication
+    # ------------------------------------------------------------------
     def handle_engine_message(self, message: str):
         self.log(f"Engine: {message}")
 
@@ -297,6 +330,7 @@ class ReversiApp:
                 current_player = parts[2]
                 state_str = parts[3]
                 self.current_turn = current_player
+                self.current_board_state_str = state_str
                 self.update_board_from_state(size, state_str)
                 self.update_scores_from_state(size, state_str, current_player)
                 self._record_board_snapshot(state_str, current_player)
@@ -375,6 +409,19 @@ class ReversiApp:
                 self._pending_move_context = {"color": color, "coord": None, "type": "pass"}
             self._pending_status_message = f"{self._color_label(color)} passes. {self._color_label(opponent)} to move."
 
+        elif cmd == Response.ANALYSIS:
+            # ANALYSIS <coord>:<score> ...
+            scores = {}
+            if len(parts) > 1:
+                for item in parts[1:]:
+                    if ":" in item:
+                        coord, score = item.split(":", 1)
+                        scores[coord] = score
+            self.board_component.show_analysis(scores)
+
+    # ------------------------------------------------------------------
+    # Board Updates
+    # ------------------------------------------------------------------
     def update_board_from_state(self, size: int, state_str: str):
         if size != self.board_size:
             self.log(f"Error: Board size mismatch {size} vs {self.board_size}")
@@ -393,6 +440,9 @@ class ReversiApp:
                     else:
                         self.board_component.update_piece(coord, None)
 
+    # ------------------------------------------------------------------
+    # Game Actions
+    # ------------------------------------------------------------------
     def on_new_game(self, e):
         self.log("GUI: Starting New Game...")
         self.game_started = True
@@ -423,16 +473,27 @@ class ReversiApp:
             self.log(f"Warning: Invalid move {coord}. Please choose a highlighted cell.")
             return
 
+        # Stop analysis immediately on click
+        if self.current_analysis_engine:
+            self.current_analysis_engine.stop_analysis()
+
         self._pending_move_context = {"color": self.current_turn, "coord": coord, "type": "move"}
         self.log(f"GUI: Clicked {coord}")
         self.board_component.highlight_valid_moves([])
+        self.board_component.clear_analysis()
         self.engine.send_command(f"{Command.PLAY} {coord}")
 
     def on_pass(self, e):
         if not self.game_started or not self._is_human_player(self.current_turn):
             return
+
+        # Stop analysis immediately on pass
+        if self.current_analysis_engine:
+            self.current_analysis_engine.stop_analysis()
+
         self.log("GUI: Requesting PASS")
         self.controls_component.set_pass_disabled(True)
+        self.board_component.clear_analysis()
         self._pending_move_context = {"color": self.current_turn, "coord": None, "type": "pass"}
         self.engine.send_command(f"{Command.PASS} {self.current_turn}")
 
@@ -442,6 +503,9 @@ class ReversiApp:
         self.latest_scores = {"BLACK": black, "WHITE": white}
         self.scoreboard_component.update_scores(black, white)
 
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
     def _color_label(self, color: str) -> str:
         if color == "BLACK":
             return "Black"
@@ -449,6 +513,9 @@ class ReversiApp:
             return "White"
         return color.capitalize()
 
+    # ------------------------------------------------------------------
+    # Game Loop
+    # ------------------------------------------------------------------
     def _drive_turn_loop(self):
         if not self.game_started or self._suppress_turn_requests:
             return
@@ -461,7 +528,11 @@ class ReversiApp:
         else:
             self.log("System: Human Turn, requesting valid moves...")
             self.engine.send_command(f"{Command.VALID_MOVES} {self.current_turn}")
+            self._trigger_analysis_if_needed()
 
+    # ------------------------------------------------------------------
+    # Persistence & Timeline
+    # ------------------------------------------------------------------
     def _record_board_snapshot(self, state_str: str, current_player: str):
         if self._suppress_recording:
             return
@@ -500,6 +571,7 @@ class ReversiApp:
         self.update_scores_from_state(self.board_size, snapshot["board"], snapshot.get("current_player", "BLACK"))
         self.current_turn = snapshot.get("current_player", "BLACK")
         self.board_component.highlight_valid_moves([])
+        self.board_component.clear_analysis()
 
         if not self.game_started:
             self.scoreboard_component.set_status(f"Replay: move {index} / {len(self.timeline) - 1}")
@@ -553,6 +625,62 @@ class ReversiApp:
         self._drive_turn_loop()
         self.replay_controller.update_status()
 
+    # ------------------------------------------------------------------
+    # Analysis
+    # ------------------------------------------------------------------
+    def _trigger_analysis_if_needed(self):
+        # Stop any existing analysis first
+        if self.current_analysis_engine:
+            self.current_analysis_engine.stop_analysis()
+
+        if not self.game_started or not self._is_human_player(self.current_turn):
+            return
+
+        config = self.human_analysis_settings.get(self.current_turn)
+        if not config or not config.get("enabled"):
+            return
+
+        if not self.current_board_state_str:
+            return
+
+        try:
+            engine_key = config.get("engine_key", "minimax")
+            params = dict(config.get("params", {}))
+
+            # Force think_delay to 0 for analysis
+            params["think_delay"] = 0.0
+
+            # Reuse engine if possible to save init time
+            # We check if the key matches. Ideally we should check params too,
+            # but since we overwrite search_depth anyway, it's mostly fine.
+            # For safety, we recreate if key changes.
+            if not self.current_analysis_engine or getattr(self.current_analysis_engine, "_engine_key", None) != engine_key:
+                self.current_analysis_engine = build_engine_instance(
+                    engine_key,
+                    board_size=self.board_size,
+                    **params
+                )
+                # Tag it so we know what it is
+                self.current_analysis_engine._engine_key = engine_key
+                # Set callback to route messages to our handler
+                self.current_analysis_engine.set_callback(self.handle_engine_message)
+
+            # Update board state
+            board = board_from_state_string(self.board_size, self.current_board_state_str, self.current_turn)
+            if hasattr(self.current_analysis_engine, "board"):
+                self.current_analysis_engine.board = board
+
+            # Start analysis
+            self.current_analysis_engine.start_analysis(self.current_turn)
+
+        except Exception as e:
+            self.log(f"Analysis Init Error: {e}")
+
+    # Removed _run_analysis_task as logic is moved to engine
+
+    # ------------------------------------------------------------------
+    # Internal Helpers
+    # ------------------------------------------------------------------
     def _is_human_player(self, color: str) -> bool:
         return self.player_modes.get(color) == "human"
 
@@ -601,11 +729,24 @@ class ReversiApp:
     def _engine_label(self, engine_key: str) -> str:
         return get_engine_metadata(engine_key).label
 
-    def _handle_engine_dialog_save(self, color: str, engine_key: str, params: dict[str, object]):
+    def _handle_engine_dialog_save(self, color: str, engine_key: str, params: dict[str, object], enabled: bool = True):
         if not color:
             return
-        self.ai_engine_settings[color] = {
-            "engine_key": resolve_engine_key(engine_key),
-            "params": params,
-        }
-        self.scoreboard_component.set_player_label(color, self._player_label(color))
+
+        if self._is_human_player(color):
+            self.human_analysis_settings[color] = {
+                "enabled": enabled,
+                "engine_key": resolve_engine_key(engine_key),
+                "params": params,
+            }
+            # Trigger analysis if it's currently this player's turn
+            if self.game_started and self.current_turn == color and enabled:
+                self._trigger_analysis_if_needed()
+            elif self.game_started and self.current_turn == color and not enabled:
+                self.board_component.clear_analysis()
+        else:
+            self.ai_engine_settings[color] = {
+                "engine_key": resolve_engine_key(engine_key),
+                "params": params,
+            }
+            self.scoreboard_component.set_player_label(color, self._player_label(color))

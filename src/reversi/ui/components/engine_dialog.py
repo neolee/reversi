@@ -19,7 +19,7 @@ class EngineConfigDialog:
         page_getter: Callable[[], Optional[ft.Page]],
         color_label_provider: Callable[[str], str],
         default_config_provider: Callable[[str], dict],
-        on_save: Callable[[str, str, Dict[str, object]], None],
+        on_save: Callable[[str, str, Dict[str, object], bool], None],
         log_callback: Callable[[str], None] | None = None,
     ) -> None:
         self._page_getter = page_getter
@@ -32,15 +32,22 @@ class EngineConfigDialog:
         self._context: dict | None = None
         self._params_column: ft.Column | None = None
         self._description: ft.Text | None = None
+        self._engine_config_container: ft.Column | None = None
 
-    def open(self, color: str, config: dict | None) -> None:
+    def open(self, color: str, config: dict | None, is_human: bool = False) -> None:
         page = self._page_getter()
         if not page:
             return
+
+        # Default config if None
         if not config:
             config = self._default_config("minimax")
+            if is_human:
+                config["enabled"] = False
+
         selected_key = resolve_engine_key(config.get("engine_key", "minimax"))
         initial_params = dict(config.get("params", {}))
+        analysis_enabled = config.get("enabled", False) if is_human else True
 
         dropdown = ft.Dropdown(
             options=[ft.dropdown.Option(meta.key, meta.label) for meta in list_engine_metadata()],
@@ -54,7 +61,10 @@ class EngineConfigDialog:
             "selected_key": selected_key,
             "param_controls": {},
             "param_meta": {},
+            "is_human": is_human,
+            "analysis_enabled": analysis_enabled
         }
+
         self._description = ft.Text(
             get_engine_metadata(selected_key).description,
             size=12,
@@ -66,14 +76,35 @@ class EngineConfigDialog:
             spacing=8,
         )
 
-        content = ft.Column(
+        self._engine_config_container = ft.Column(
             [
-                ft.Text(f"{self._color_label(color)} Engine", size=18, weight=ft.FontWeight.BOLD),
                 dropdown,
                 self._description,
                 ft.Divider(height=1),
                 self._params_column,
             ],
+            spacing=12,
+            visible=analysis_enabled
+        )
+
+        dialog_content_controls = [
+            ft.Text(f"{self._color_label(color)} {'Analysis' if is_human else 'Engine'}", size=18, weight=ft.FontWeight.BOLD),
+        ]
+
+        enable_switch = None
+        if is_human:
+            enable_switch = ft.Switch(
+                label="Enable Analysis Assist",
+                value=analysis_enabled,
+                on_change=self._handle_enable_change
+            )
+            self._context["enable_switch"] = enable_switch
+            dialog_content_controls.append(enable_switch)
+
+        dialog_content_controls.append(self._engine_config_container)
+
+        content = ft.Column(
+            dialog_content_controls,
             tight=True,
             spacing=12,
             width=360,
@@ -91,6 +122,13 @@ class EngineConfigDialog:
             page.overlay.append(self._dialog)
         self._dialog.open = True
         page.update()
+
+    def _handle_enable_change(self, e):
+        if self._engine_config_container:
+            self._engine_config_container.visible = e.control.value
+            self._engine_config_container.update()
+        if self._context:
+            self._context["analysis_enabled"] = e.control.value
 
     def _handle_engine_choice_change(self, engine_key: str) -> None:
         if not self._context:
@@ -139,6 +177,7 @@ class EngineConfigDialog:
         self._context = None
         self._params_column = None
         self._description = None
+        self._engine_config_container = None
 
     def _save_dialog(self, e=None):  # type: ignore[override]
         if not self._context:
@@ -180,8 +219,13 @@ class EngineConfigDialog:
                 control.update()
             params[name] = parsed
         if color:
-            self._on_save(color, selected_key, params)
-            self._log(
-                f"Settings: {self._color_label(color)} engine -> {get_engine_metadata(selected_key).label}"
-            )
+            enabled = self._context.get("analysis_enabled", True)
+            self._on_save(color, selected_key, params, enabled)
+            if self._context.get("is_human"):
+                status = "Enabled" if enabled else "Disabled"
+                self._log(f"Analysis: {self._color_label(color)} -> {status} ({get_engine_metadata(selected_key).label})")
+            else:
+                self._log(
+                    f"Settings: {self._color_label(color)} engine -> {get_engine_metadata(selected_key).label}"
+                )
         self._close_dialog()

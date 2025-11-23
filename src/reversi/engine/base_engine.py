@@ -19,6 +19,10 @@ class BaseEngine(EngineInterface, ABC):
         self.think_delay = think_delay
         self.board = Board(size=board_size)
         self._running = False
+        self.search_depth = 3  # Default search depth
+        self._engine_key = None # Optional tag for UI reuse
+        self._analyzing = False
+        self._analysis_session_id = 0
 
     # ------------------------------------------------------------------
     # EngineInterface lifecycle
@@ -59,6 +63,9 @@ class BaseEngine(EngineInterface, ABC):
         elif cmd == Command.VALID_MOVES:
             color = parts[1] if len(parts) > 1 else self.board.current_player
             self._emit_valid_moves(color)
+        elif cmd == Command.ANALYZE:
+            color = parts[1] if len(parts) > 1 else self.board.current_player
+            self._handle_analyze(color)
         elif cmd == Command.PASS:
             color = parts[1] if len(parts) > 1 else self.board.current_player
             self._handle_pass(color)
@@ -121,6 +128,30 @@ class BaseEngine(EngineInterface, ABC):
             self._check_game_state()
         else:
             self._emit(f"{Response.ERROR} Unable to pass for {color}")
+
+    def _handle_analyze(self, color: str):
+        threading.Thread(target=self._run_analysis, args=(color,), daemon=True).start()
+
+    def _run_analysis(self, color: str):
+        # Don't sleep for analysis, or maybe a tiny bit?
+        # time.sleep(self.think_delay)
+        scores = self.analyze(color)
+        if not scores:
+            # If engine doesn't support analysis or no moves, send empty
+            self._emit(f"{Response.ANALYSIS}")
+            return
+
+        # Format: ANALYSIS D3:10.5 E3:-2.0
+        parts = []
+        for (r, c), score in scores:
+            coord = self.board.coord_to_str(r, c)
+            parts.append(f"{coord}:{score:.2f}")
+
+        self._emit(f"{Response.ANALYSIS} {' '.join(parts)}")
+
+    def analyze(self, color: str) -> list[tuple[tuple[int, int], float]]:
+        """Return a list of (move, score) tuples. Default implementation returns empty."""
+        return []
 
     # ------------------------------------------------------------------
     # AI execution
@@ -193,3 +224,65 @@ class BaseEngine(EngineInterface, ABC):
                     state.append(".")
         state_str = "".join(state)
         self._emit(f"{Response.BOARD} {self.board_size} {self.board.current_player} {state_str}")
+
+    # ------------------------------------------------------------------
+    # Analysis
+    # ------------------------------------------------------------------
+    def start_analysis(self, color: str):
+        """Start background analysis with iterative deepening."""
+        self.stop_analysis()
+        self._analysis_session_id += 1
+        self._analyzing = True
+        threading.Thread(
+            target=self._analysis_loop,
+            args=(color, self._analysis_session_id),
+            daemon=True
+        ).start()
+
+    def stop_analysis(self):
+        """Stop any running analysis."""
+        self._analyzing = False
+
+    def _analysis_loop(self, color: str, session_id: int):
+        # Start with depth 2 for immediate feedback (Odd-Even effect mitigation: use even depths)
+        current_depth = 2
+        max_depth = 12
+
+        while self._analyzing:
+            # Check if this session is still valid
+            if session_id != self._analysis_session_id:
+                break
+
+            # Set depth if supported
+            if hasattr(self, "search_depth"):
+                self.search_depth = current_depth
+
+            # Run analysis
+            scores = self.analyze(color)
+
+            # Check validity again after potentially long analysis
+            if not self._analyzing or session_id != self._analysis_session_id:
+                break
+
+            if scores:
+                # Emit results
+                parts = []
+                for (r, c), score in scores:
+                    coord = self.board.coord_to_str(r, c)
+                    parts.append(f"{coord}:{score:.2f}")
+                self._emit(f"{Response.ANALYSIS} {' '.join(parts)}")
+
+            # Iterative Deepening
+            if not hasattr(self, "search_depth"):
+                break # Cannot change depth, so one run is enough
+
+            current_depth += 2
+            if current_depth > max_depth:
+                break
+
+            # Small sleep to prevent CPU hogging if analysis is instant
+            time.sleep(0.01)
+
+        # We don't set _analyzing = False here because another session might be running
+        if session_id == self._analysis_session_id:
+            self._analyzing = False

@@ -59,9 +59,9 @@ class GameControlsComponent:
             self.player_mode_selectors[color] = dropdown
             config_button = ft.IconButton(
                 icon="settings",
-                tooltip="Configure engine",
+                tooltip="Configure",
                 on_click=lambda e, color=color: self.on_configure_engine(color),
-                disabled=default != "engine",
+                disabled=False,
                 style=ft.ButtonStyle(padding=0),
             )
             self.engine_buttons[color] = config_button
@@ -135,7 +135,8 @@ class GameControlsComponent:
         if selector:
             selector.value = mode
             selector.update()
+        # Config button is always enabled now
         button = self.engine_buttons.get(color)
         if button:
-            button.disabled = mode != "engine"
+            button.disabled = False
             button.update()
