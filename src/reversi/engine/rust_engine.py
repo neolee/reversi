@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
+from concurrent.futures import TimeoutError
 from typing import Any, Iterable, Optional, Tuple
 
 from reversi.engine.base_engine import BaseEngine
@@ -101,9 +102,15 @@ class BaseRustSearchEngine(BaseEngine, ABC):
             color,
         )
 
-        # Wait for result (releases GIL)
+        # Wait for result (releases GIL) while allowing cancellation
         try:
-            return future.result()
+            while True:
+                try:
+                    return future.result(timeout=0.1)
+                except TimeoutError:
+                    if not self._analyzing:
+                        future.cancel()
+                        return []
         except Exception:
             logger.exception("Error waiting for Rust analysis result")
             return []

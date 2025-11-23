@@ -33,6 +33,7 @@ class BaseEngine(EngineInterface, ABC):
 
     def stop(self):
         self._running = False
+        self.stop_analysis()
 
     # ------------------------------------------------------------------
     # Command handling
@@ -133,21 +134,23 @@ class BaseEngine(EngineInterface, ABC):
         threading.Thread(target=self._run_analysis, args=(color,), daemon=True).start()
 
     def _run_analysis(self, color: str):
-        # Don't sleep for analysis, or maybe a tiny bit?
-        # time.sleep(self.think_delay)
-        scores = self.analyze(color)
-        if not scores:
-            # If engine doesn't support analysis or no moves, send empty
-            self._emit(f"{Response.ANALYSIS}")
-            return
+        transient_session = not self._analyzing
+        if transient_session:
+            self._analysis_session_id += 1
+            session_id = self._analysis_session_id
+            self._analyzing = True
+        else:
+            session_id = self._analysis_session_id
 
-        # Format: ANALYSIS D3:10.5 E3:-2.0
-        parts = []
-        for (r, c), score in scores:
-            coord = self.board.coord_to_str(r, c)
-            parts.append(f"{coord}:{score:.2f}")
-
-        self._emit(f"{Response.ANALYSIS} {' '.join(parts)}")
+        try:
+            scores = self.analyze(color)
+            if not self._analyzing or session_id != self._analysis_session_id:
+                return
+            if scores:
+                self._emit_analysis_scores(scores)
+        finally:
+            if transient_session and session_id == self._analysis_session_id:
+                self._analyzing = False
 
     def analyze(self, color: str) -> list[tuple[tuple[int, int], float]]:
         """Return a list of (move, score) tuples. Default implementation returns empty."""
@@ -264,13 +267,7 @@ class BaseEngine(EngineInterface, ABC):
             if not self._analyzing or session_id != self._analysis_session_id:
                 break
 
-            if scores:
-                # Emit results
-                parts = []
-                for (r, c), score in scores:
-                    coord = self.board.coord_to_str(r, c)
-                    parts.append(f"{coord}:{score:.2f}")
-                self._emit(f"{Response.ANALYSIS} {' '.join(parts)}")
+            self._emit_analysis_scores(scores)
 
             # Iterative Deepening
             if not hasattr(self, "search_depth"):
@@ -286,3 +283,14 @@ class BaseEngine(EngineInterface, ABC):
         # We don't set _analyzing = False here because another session might be running
         if session_id == self._analysis_session_id:
             self._analyzing = False
+
+    def _emit_analysis_scores(self, scores: list[tuple[tuple[int, int], float]]):
+        """Emit formatted ANALYSIS response for provided scores."""
+        if not scores:
+            self._emit(f"{Response.ANALYSIS}")
+            return
+        parts = []
+        for (r, c), score in scores:
+            coord = self.board.coord_to_str(r, c)
+            parts.append(f"{coord}:{score:.2f}")
+        self._emit(f"{Response.ANALYSIS} {' '.join(parts)}")
