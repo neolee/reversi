@@ -18,9 +18,9 @@ Develop a cross-platform Reversi game featuring a clean GUI and a powerful AI en
 - **UI Framework**: Flet (desktop/web).
 
 ## Key Features
-- Human vs AI and AI vs AI modes with per-color engine selection from the GUI.
+- Human vs AI and AI vs AI modes with per-color engine selection from the GUI plus optional per-human analysis assist.
 - Undo/Redo workflow that issues double `UNDO` when needed to keep Human vs AI turns aligned.
-- Real-time analysis hooks (minimax evaluation, playout engines) exposed via the metadata registry.
+- Real-time analysis hooks (minimax evaluation, playout engines) exposed via the metadata registry and surfaced as board overlays when enabled.
 - Game save/load (human-readable JSON) and replay timeline with toolbar controls.
 - Headless duel runner (`main.py duel`) to script batches of engine-vs-engine games.
 
@@ -30,10 +30,10 @@ Develop a cross-platform Reversi game featuring a clean GUI and a powerful AI en
 - **Documentation**: Document the protocol clearly.
 
 ## Current Status
-- **UI**: Flet GUI with responsive board sizing, polished pieces, marker-based valid-move highlights, live score readouts, undo/pass-aware turn handling, and scoreboard labels that track whether a side is Human or which engine is in use.
-- **Engine**: `MinimaxEngine` evaluates positions with Alpha-Beta (tunable depth); `TrivialEngine` provides a random baseline; `RustAlphaBetaEngine`, `RustThunderEngine`, and `RustMctsEngine` wrap the Rust implementation for deterministic and stochastic searches.
-- **Engine Config**: `src/reversi/engine/metadata.py` centralizes engine parameter metadata and powers both the GUI dialog and CLI helpers. `src/reversi/engine/ai_player.py` defines reusable `EngineSpec`/`EnginePlayer` helpers shared by the duel runner and upcoming GUI integration.
-- **Protocol**: Text-based command set (INIT/NEWGAME/PLAY/GENMOVE/VALID_MOVES/PASS/UNDO/BOARD/RESULT) implemented under `src/reversi/protocol`.
+- **UI**: Flet GUI with responsive board sizing, polished pieces, marker-based valid-move highlights, live score readouts, undo/pass-aware turn handling, scoreboard labels reflecting per-side player/engine, and opt-in Analysis Assist that spins up cached helper engines per config and automatically stops them on user input, undo, load, or new game.
+- **Engine**: `MinimaxEngine` evaluates positions with Alpha-Beta (tunable depth); `TrivialEngine` provides a random baseline; `RustAlphaBetaEngine`, `RustThunderEngine`, and `RustMctsEngine` wrap the Rust implementation for deterministic and stochastic searches. Rust-backed analysis now runs inside a shared spawn-based `ProcessPoolExecutor` guarded by a lock and shut down via `atexit` to prevent orphaned workers.
+- **Engine Config**: `src/reversi/engine/metadata.py` centralizes engine parameter metadata and powers both the GUI dialog and CLI helpers. `src/reversi/engine/ai_player.py` defines reusable `EngineSpec`/`EnginePlayer` helpers shared by the duel runner and GUI integration.
+- **Protocol**: Text-based command set (INIT/NEWGAME/PLAY/GENMOVE/VALID_MOVES/PASS/UNDO/BOARD/RESULT/ANALYZE) implemented under `src/reversi/protocol`, with engines emitting `ANALYSIS` responses for move-evaluation overlays.
 - **Entry Point**: `main.py` CLI offers `ui` (always boots the GUI with the default protocol engine and lets the sidebar configure per-color engines) plus `duel` for scripted engine-vs-engine runs with independent specs.
 - **Persistence**: Sidebar Save/Load buttons export/import JSON timelines (v2 schema), and the replay toolbar under the board replays any finished or loaded match.
 - **Dependencies**: `flet` and `rust-reversi` declared in `pyproject.toml`.
@@ -52,6 +52,7 @@ Develop a cross-platform Reversi game featuring a clean GUI and a powerful AI en
 - Engine selection dialog lets each color choose/configure its engine; `ai_engine_settings` is persisted alongside player modes so replays/loadouts stay in sync.
 - CLI `ui` command no longer exposes `--engine`/`--search-depth`; the GUI is now the single source of truth for engine selection, while the duel command keeps per-side options.
 - Headless duel runner leverages the shared `EngineSpec` and metadata registry so both CLI and GUI stay aligned when adding new engines.
+- Human analysis assist caches helper engines per signature, mirrors the live board into them, and tears them down whenever you interact so background computations stay isolated from the protocol engine.
 
 ## Roadmap
 - Design spectator/visualization workflows for engine-vs-engine matches inside the GUI (live analysis overlays, match recording).
@@ -60,3 +61,4 @@ Develop a cross-platform Reversi game featuring a clean GUI and a powerful AI en
 
 ## Known Issues
 - **Flet FilePicker Bug**: Flet version 0.28.3 has a bug where the FilePicker dialog does not appear. This is fixed in 0.28.2 (rollback required) or future versions.
+- **Rust Alpha Analysis Shutdown**: When `rust-alpha` is selected as the human analysis engine, closing the GUI can raise `RuntimeError: Event loop is closed`. Multiple mitigations failed; treat it as a noisy-but-harmless shutdown error.

@@ -78,6 +78,19 @@ GUI> VALID_MOVES WHITE
 ENG> VALID_MOVES C3 C5 E3 F4
 ```
 
+### `ANALYZE [color]`
+Request a stream of move evaluations for `color`. Engines should begin (or reuse) a background search that periodically emits `ANALYSIS` results without changing the official game tree.
+- If `color` is omitted, analyze the side to move.
+- Engines must cancel any previous analysis session when a new `ANALYZE` arrives so stale scores do not leak into the UI.
+- The GUI stops analysis automatically whenever a human interacts (`PLAY`, `PASS`, `UNDO`, `NEWGAME`, loads a timeline, etc.), so engines should watch for those signals and exit quickly.
+
+**Example**
+```
+ANALYZE BLACK
+ANALYSIS D3:12.5 C4:8.0
+ANALYSIS E3:15.0
+```
+
 ### `PASS <color>`
 Force `color` to pass when no moves exist.
 - **Response**: `OK` (plus an updated `BOARD`).
@@ -113,6 +126,15 @@ Signals that `color` has no legal moves and must pass. Often emitted right after
 
 ### `VALID_MOVES <coord1> <coord2> ...`
 Lists legal moves in response to a `VALID_MOVES` command. An empty payload indicates there are none.
+
+### `ANALYSIS <coord:score ...>`
+Streams evaluation data in response to an `ANALYZE` command. Each token contains a coordinate and a floating-point score (positive favors the analyzed color). Engines may emit multiple `ANALYSIS` lines as depth increases; sending an empty payload (`ANALYSIS`) indicates that analysis finished but no legal moves were available.
+- Example:
+```
+ANALYSIS D3:10.25 E3:-4.50
+ANALYSIS
+```
+- Engines should stop emitting as soon as the GUI issues a new command that implies user action (`PLAY`, `PASS`, `UNDO`, `NEWGAME`, load/save replay, etc.) so overlays do not fall out of sync.
 
 ### `ERROR <msg>`
 Indicates an invalid command, illegal move, or internal failure. The GUI logs these messages for debugging.
