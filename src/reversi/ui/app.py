@@ -1,4 +1,6 @@
 import asyncio
+from typing import Any, cast
+
 import flet as ft
 from reversi.protocol.interface import EngineInterface
 from reversi.protocol.constants import Command, Response
@@ -19,6 +21,7 @@ class ReversiApp:
         self.engine = engine
         self.board_size = board_size
         self.engine.set_callback(self.handle_engine_message)
+        self.page: ft.Page | None = None
         self.player_modes = {"BLACK": "human", "WHITE": "engine"}
         self.human_color = "BLACK"
         self.ai_color = "WHITE"
@@ -32,7 +35,7 @@ class ReversiApp:
             "WHITE": {"enabled": False, "engine_key": "minimax", "params": self._default_engine_config("minimax")["params"]},
         }
         self.engine_dialog = EngineConfigDialog(
-            page_getter=lambda: getattr(self, "page", None),
+            page_getter=lambda: self.page,
             color_label_provider=self._color_label,
             default_config_provider=self._default_engine_config,
             on_save=self._handle_engine_dialog_save,
@@ -46,14 +49,14 @@ class ReversiApp:
         )
 
         self.replay_controller = ReplayController(
-            page_getter=lambda: getattr(self, "page", None),
+            page_getter=lambda: self.page,
             apply_snapshot_callback=self._apply_snapshot,
             get_timeline_len_callback=lambda: len(self.timeline),
             is_game_started_callback=lambda: self.game_started
         )
 
         self.persistence_manager = PersistenceManager(
-            page_getter=lambda: getattr(self, "page", None),
+            page_getter=lambda: self.page,
             get_save_payload_callback=self._build_save_payload,
             load_game_data_callback=self._apply_loaded_data,
             log_callback=self.log
@@ -89,7 +92,6 @@ class ReversiApp:
 
         # Layout Constants
         self.board_padding = 24
-        self._last_viewport = (None, None)
         self._board_area_padding_h = 16.0
         self._board_area_padding_v = 16.0
         self._board_column_spacing = 16.0
@@ -110,6 +112,7 @@ class ReversiApp:
         page.padding = 20
         page.window.prevent_close = True
         page.window.on_event = self._handle_window_event
+        page.on_resized = self._handle_resize_event
 
         self.persistence_manager.register_pickers(page.overlay)
 
@@ -191,8 +194,6 @@ class ReversiApp:
         # Auto-start new game
         self.on_new_game(None)
 
-        page.run_task(self._monitor_viewport)
-
     # ------------------------------------------------------------------
     # Event Handlers
     # ------------------------------------------------------------------
@@ -215,9 +216,6 @@ class ReversiApp:
             self._drive_turn_loop()
 
     def on_configure_engine(self, color: str):
-        if not getattr(self, "page", None):
-            return
-
         is_human = self._is_human_player(color)
         if is_human:
             config = self.human_analysis_settings.get(color)
@@ -237,24 +235,18 @@ class ReversiApp:
     # Layout & Resizing
     # ------------------------------------------------------------------
     def adjust_board_size(self, width: float | None = None, height: float | None = None):
-        if not getattr(self, "page", None) or not self.board_wrapper:
+        if not self.page or not self.board_wrapper:
             return
 
-        if width is None:
-            width = getattr(self.page, "window_width", None) or self.page.width
-        if height is None:
-            height = getattr(self.page, "window_height", None) or self.page.height
+        width = self.page.width
+        height = self.page.height
         if width is None or height is None:
             return
 
-        prev_w, prev_h = self._last_viewport
-        if prev_w == width and prev_h == height:
-            return
-        self._last_viewport = (width, height)
-
         sidebar_container = self.controls_component.container
         sidebar_width = float(sidebar_container.width) if sidebar_container and sidebar_container.width else 0.0
-        page_padding = float(getattr(self.page, "padding", 0) or 0)
+        padding_value = cast(float | int | None, self.page.padding)
+        page_padding = float(padding_value or 0)
         divider_width = 1.0
         safety_margin = 36.0
         available_width = max(
@@ -292,17 +284,14 @@ class ReversiApp:
         self.board_wrapper.update()
         self.board_component.resize_cells(new_cell_size)
 
-    async def _monitor_viewport(self):
-        await asyncio.sleep(0.2)
-        prev_w, prev_h = self._last_viewport
-        while True:
-            current_w = getattr(self.page, "window_width", None) or self.page.width
-            current_h = getattr(self.page, "window_height", None) or self.page.height
-            if current_w and current_h:
-                if current_w != prev_w or current_h != prev_h:
-                    self.adjust_board_size(current_w, current_h)
-                    prev_w, prev_h = current_w, current_h
-            await asyncio.sleep(0.25)
+    def _handle_resize_event(self, e: ft.ControlEvent):
+        if not self.page:
+            return
+        
+        width = self.page.width
+        height = self.page.height
+        if width and height:
+            self.adjust_board_size(width, height)
 
     # ------------------------------------------------------------------
     # UI State Management
@@ -787,14 +776,17 @@ class ReversiApp:
             self._request_shutdown()
 
     def _request_shutdown(self):
-        if not self.page or self._is_shutting_down:
+        page = self.page
+        if not page or self._is_shutting_down:
             return
-        self.page.run_task(self._begin_shutdown_sequence)
+        page.run_task(self._begin_shutdown_sequence)
 
     async def _begin_shutdown_sequence(self):
-        if self._is_shutting_down:
-            return
+        if self._is_shutting_down: return
         self._is_shutting_down = True
+
+        if not self.page: return
+
         self._show_shutdown_dialog()
         await self._shutdown_engines()
         self._hide_shutdown_dialog()
@@ -802,7 +794,7 @@ class ReversiApp:
         self.page.window.destroy()
 
     def _show_shutdown_dialog(self):
-        page = getattr(self, "page", None)
+        page = self.page
         if not page:
             return
         if self._shutdown_dialog:
@@ -838,7 +830,7 @@ class ReversiApp:
         page.update()
 
     def _hide_shutdown_dialog(self):
-        page = getattr(self, "page", None)
+        page = self.page
         if self._shutdown_dialog and page:
             self._shutdown_dialog.open = False
             page.update()
