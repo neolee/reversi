@@ -1,6 +1,6 @@
 # Reversi
 
-Cross-platform Reversi with a Flet UI and pluggable engines.
+Cross-platform Reversi with a Flet UI and pluggable AI engines.
 
 ## Current Highlights
 
@@ -9,7 +9,7 @@ Cross-platform Reversi with a Flet UI and pluggable engines.
 - Live scoreboard above the board shows running disc counts, labels each side with the selected Human/engine, and declares the winner when play ends.
 - Sidebar controls include a Pass Turn button that becomes available when the human has no legal moves, enforcing the official rules.
 - `MinimaxEngine` uses Alpha-Beta pruning plus board cloning for strong play; `TrivialEngine` remains as a random baseline.
-- `RustAlphaBetaEngine`, `RustThunderEngine`, and `RustMctsEngine` wrap the `rust-reversi` PyPI package for deterministic alpha-beta, epsilon-greedy playout, and Monte Carlo tree search playstyles.
+- `RustAlphaBetaEngine`, `RustThunderEngine`, and `RustMctsEngine` wrap the `rust-reversi` PyPI package for deterministic alpha-beta, epsilon-greedy playout, and Monte Carlo tree search play styles.
 - Save/Load buttons write human-readable JSON timelines, and a replay toolbar under the board lets you scrub through any finished or loaded match.
 - Human players can enable per-color "Analysis Assist" sessions that spin up metadata-driven engines with `think_delay=0`, stream `ANALYSIS` overlays, and auto-stop on clicks, passes, undos, and loads so helpers never leak into gameplay.
 - Engine configuration is metadata-driven (`src/reversi/engine/metadata.py`) so the GUI dialog and CLI duel runner share the same parameter definitions; `src/reversi/engine/ai_player.py` exposes reusable `EngineSpec`/`EnginePlayer` helpers for automated play.
@@ -24,7 +24,7 @@ The Controls panel includes **Save** / **Load** buttons, and the replay toolbar 
 
 ### Analysis Assist
 
-Each human color can toggle a background evaluator from the gear dialog. The UI caches a dedicated engine per signature (engine key + params), forces `think_delay=0`, mirrors the current board snapshot, and calls `start_analysis()` so iterative-deepening engines can stream updated `ANALYSIS` overlays. Sessions automatically stop when you play, pass, undo, start a new game, or load a timeline, keeping helper threads isolated from the main protocol engine.
+Each human color can toggle a background evaluator from the gear dialog. The UI caches a dedicated engine per signature (engine key + parameters), forces `think_delay=0`, mirrors the current board snapshot, and calls `start_analysis()` so iterative-deepening engines can stream updated `ANALYSIS` overlays. Sessions automatically stop when you play, pass, undo, start a new game, or load a timeline, keeping helper threads isolated from the main protocol engine.
 
 ## Run Engine Duels from the CLI
 
@@ -61,6 +61,6 @@ Each side takes its own engine/depth/delay parameters via the shared `EngineSpec
 
 ## Known Issues
 
-- Flet 0.28.3 still has a FilePicker regression where dialogs may not appear; downgrade to 0.28.2 or upgrade once upstream releases a fix.
-- When `rust-alpha` is selected as the human analysis engine, closing the GUI can raise `RuntimeError: Event loop is closed`. Multiple mitigations were attempted but the exception still surfaces sporadically during shutdown.
-  - The shutdown dialog now intercepts window close events and keeps engine teardown orderly, but OS-level quit shortcuts still bypass the hook and can kill the app mid-shutdown; avoid that until Flet exposes a reliable interception point.
+- Flet 0.28.3 has a file access privilege issue in FilePicker on latest macOS where the dialog may not appear; downgrade to 0.28.2 or upgrade once upstream releases a fix.
+- When `rust-alpha` is selected as the human analysis engine, closing the GUI can raise `RuntimeError: Event loop is closed`.
+  - The shutdown dialog now intercepts window close events and keeps engine shutdown gracefully, but OS-level quit shortcuts still bypass the hook and can kill the app mid-shutdown; avoid that until Flet exposes a reliable interception point.

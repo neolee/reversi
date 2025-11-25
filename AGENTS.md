@@ -44,10 +44,9 @@ Develop a cross-platform Reversi game featuring a clean GUI and a powerful AI en
 
 ## Recent Notes
 - UI auto-starts games and listens for engine responses; all turn transitions are driven by `BOARD`/`VALID_MOVES` messages.
-- Responsive sizing handled via an async viewport monitor that recalculates cell dimensions and keeps the board square next to the sidebar.
 - Valid moves are indicated with stacked glow markers (no border changes) and are cleared immediately once the human plays.
 - Undo button issues two `UNDO` commands when needed so human turns always resume correctly in Human vs AI mode.
-- Log pane autoscrolls and only re-renders itself for new messages to limit UI churn.
+- Log pane auto scrolls and only re-renders itself for new messages to limit UI churn.
 - Pass button activates only when the human has no legal moves and sends `PASS <color>`; engines also auto-pass when they are out of moves, leading to a `RESULT` once both colors are stuck.
 - Engine selection dialog lets each color choose/configure its engine; `ai_engine_settings` is persisted alongside player modes so replays/loadouts stay in sync.
 - CLI `ui` command no longer exposes `--engine`/`--search-depth`; the GUI is now the single source of truth for engine selection, while the duel command keeps per-side options.
@@ -60,6 +59,6 @@ Develop a cross-platform Reversi game featuring a clean GUI and a powerful AI en
 - Explore auxiliary tooling such as visualizing engine analysis data to aid debugging and teaching.
 
 ## Known Issues
-- **Flet FilePicker Bug**: Flet version 0.28.3 has a bug where the FilePicker dialog does not appear. This is fixed in 0.28.2 (rollback required) or future versions.
-- **Rust Alpha Analysis Shutdown**: When `rust-alpha` is selected as the human analysis engine, closing the GUI can raise `RuntimeError: Event loop is closed`. Multiple mitigations failed; treat it as a noisy-but-harmless shutdown error.
-  - **Command-Q Shutdown Gap**: The new shutdown protects dialog normal window closes, but OS-level quit shortcuts still bypass the hook and can terminate the app while engines are tearing down; avoid that until Flet exposes a global close event.
+- **Flet FilePicker Bug**: Flet version 0.28.3 has a bug where the FilePicker dialog does not appear on latest macOS due to file access privilege issue. Rollback to version 0.28.2 (rollback required) or wait for future fix.
+- **Analysis Engine Graceful Shutdown**: When `rust-alpha` is selected as the human analysis engine, closing the GUI can raise `RuntimeError: Event loop is closed`.
+  - The shutdown dialog now prevent window close until engine stops, but OS-level quit shortcuts still bypass the hook and can terminate the app while engines are tearing down; avoid that until Flet exposes a global close event.
