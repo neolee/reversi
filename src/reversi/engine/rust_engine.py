@@ -7,7 +7,7 @@ from typing import Any, Iterable, Optional, Tuple
 
 from reversi.engine.base_engine import BaseEngine
 from reversi.engine.board import Board as PyBoard
-from reversi.engine.process_pool import get_executor
+from reversi.engine.process_pool import get_executor, shutdown_executor
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +50,13 @@ class BaseRustSearchEngine(BaseEngine, ABC):
         super().__init__(board_size=board_size, think_delay=think_delay)
         self._piece_evaluator = PieceEvaluator()
         self._winrate_evaluator = WinrateEvaluator()
+
+    def stop(self):
+        super().stop()
+        try:
+            shutdown_executor(wait=True)
+        except Exception:
+            logger.exception("Error shutting down Rust process pool")
 
     def _pick_move(
         self,

@@ -12,7 +12,6 @@ from reversi.ui.components import game_state_serializer
 from reversi.engine.metadata import get_engine_metadata, resolve_engine_key
 from reversi.engine.registry import build_engine_instance
 from reversi.engine.ai_player import board_from_state_string
-from reversi.engine.process_pool import shutdown_executor
 
 
 class ReversiApp:
@@ -758,20 +757,24 @@ class ReversiApp:
             }
             self.scoreboard_component.set_player_label(color, self._player_label(color))
 
-    def _stop_current_analysis(self, *, dispose_engine: bool = False):
+    def _stop_current_analysis(self):
         if not self.current_analysis_engine:
             return
         try:
             self.current_analysis_engine.stop_analysis()
         except Exception:
             pass
-        if dispose_engine:
-            try:
-                self.current_analysis_engine.stop()
-            except Exception:
-                pass
-            self.current_analysis_engine = None
-            self._analysis_engine_signature = None
+
+    async def _dispose_analysis_engine(self):
+        if not self.current_analysis_engine:
+            return
+        engine = self.current_analysis_engine
+        self.current_analysis_engine = None
+        self._analysis_engine_signature = None
+        try:
+            await asyncio.to_thread(engine.stop)
+        except Exception:
+            self.log("Analysis engine shutdown warning")
 
     def _build_analysis_signature(self, engine_key: str, params: dict[str, object]) -> tuple[str, tuple[tuple[str, object], ...]]:
         return (engine_key, tuple(sorted(params.items())))
@@ -843,7 +846,8 @@ class ReversiApp:
 
     async def _shutdown_engines(self):
         self.log("System: Shutting down engines...")
-        self._stop_current_analysis(dispose_engine=True)
+        self._stop_current_analysis()
+        await self._dispose_analysis_engine()
         if self.engine:
             try:
                 self.engine.stop()
@@ -851,7 +855,3 @@ class ReversiApp:
                 self.log(f"Shutdown warning: {exc}")
         # Allow callbacks to flush
         await asyncio.sleep(0.05)
-        try:
-            await asyncio.to_thread(shutdown_executor, True)
-        except Exception as exc:
-            self.log(f"Executor shutdown warning: {exc}")
