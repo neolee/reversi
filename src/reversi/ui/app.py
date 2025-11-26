@@ -1,5 +1,4 @@
 import asyncio
-from typing import Any, cast
 
 import flet as ft
 from reversi.protocol.interface import EngineInterface
@@ -245,8 +244,8 @@ class ReversiApp:
 
         sidebar_container = self.controls_component.container
         sidebar_width = float(sidebar_container.width) if sidebar_container and sidebar_container.width else 0.0
-        padding_value = cast(float | int | None, self.page.padding)
-        page_padding = float(padding_value or 0)
+        padding_value = getattr(self.page, "padding", 0) # padding may be None
+        page_padding = float(padding_value)
         divider_width = 1.0
         safety_margin = 36.0
         available_width = max(
@@ -284,7 +283,7 @@ class ReversiApp:
         self.board_wrapper.update()
         self.board_component.resize_cells(new_cell_size)
 
-    def _handle_resize_event(self, e: ft.ControlEvent):
+    def _handle_resize_event(self, _: ft.ControlEvent):
         if not self.page:
             return
         
@@ -327,7 +326,7 @@ class ReversiApp:
                 self.current_turn = current_player
                 self.current_board_state_str = state_str
                 self.update_board_from_state(size, state_str)
-                self.update_scores_from_state(size, state_str, current_player)
+                self.update_scores_from_state(state_str)
                 self._record_board_snapshot(state_str, current_player)
                 if self._pending_status_message:
                     self.scoreboard_component.set_status(self._pending_status_message)
@@ -438,7 +437,7 @@ class ReversiApp:
     # ------------------------------------------------------------------
     # Game Actions
     # ------------------------------------------------------------------
-    def on_new_game(self, e):
+    def on_new_game(self, _):
         self.log("GUI: Starting New Game...")
         self._stop_current_analysis()
         self.game_started = True
@@ -447,7 +446,7 @@ class ReversiApp:
         self.reset_board_ui()
         self.engine.send_command(Command.NEWGAME)
 
-    def on_undo(self, e):
+    def on_undo(self, _):
         self.log("GUI: Sending UNDO")
         undo_count = 1
         opponent = self._opponent_color(self.current_turn)
@@ -478,7 +477,7 @@ class ReversiApp:
         self.board_component.clear_analysis()
         self.engine.send_command(f"{Command.PLAY} {coord}")
 
-    def on_pass(self, e):
+    def on_pass(self, _):
         if not self.game_started or not self._is_human_player(self.current_turn):
             return
 
@@ -491,7 +490,7 @@ class ReversiApp:
         self._pending_move_context = {"color": self.current_turn, "coord": None, "type": "pass"}
         self.engine.send_command(f"{Command.PASS} {self.current_turn}")
 
-    def update_scores_from_state(self, size: int, state_str: str, current_player: str):
+    def update_scores_from_state(self, state_str: str):
         black = state_str.count("B")
         white = state_str.count("W")
         self.latest_scores = {"BLACK": black, "WHITE": white}
@@ -562,7 +561,7 @@ class ReversiApp:
         snapshot = self.timeline[index]
 
         self.update_board_from_state(self.board_size, snapshot["board"])
-        self.update_scores_from_state(self.board_size, snapshot["board"], snapshot.get("current_player", "BLACK"))
+        self.update_scores_from_state(snapshot["board"])
         self.current_turn = snapshot.get("current_player", "BLACK")
         self.board_component.highlight_valid_moves([])
         self.board_component.clear_analysis()
@@ -782,10 +781,12 @@ class ReversiApp:
         page.run_task(self._begin_shutdown_sequence)
 
     async def _begin_shutdown_sequence(self):
-        if self._is_shutting_down: return
+        if self._is_shutting_down:
+            return
         self._is_shutting_down = True
 
-        if not self.page: return
+        if not self.page:
+            return
 
         self._show_shutdown_dialog()
         await self._shutdown_engines()

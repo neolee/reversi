@@ -39,7 +39,7 @@ def _run_rust_analysis(engine_cls, init_kwargs, board_snapshot, color):
         raise
 
 
-class BaseRustSearchEngine(BaseEngine, ABC):
+class BaseRustEngine(BaseEngine, ABC):
     """Shared plumbing for engines backed by the rust-reversi package."""
 
     SUPPORTED_SIZE = 8
@@ -216,7 +216,7 @@ class BaseRustSearchEngine(BaseEngine, ABC):
         return row, col
 
 
-class RustAlphaBetaEngine(BaseRustSearchEngine):
+class RustAlphaBetaEngine(BaseRustEngine):
     """Deterministic alpha-beta search implemented in Rust."""
 
     def __init__(
@@ -255,7 +255,7 @@ class RustAlphaBetaEngine(BaseRustSearchEngine):
         return 0.0
 
 
-class RustThunderEngine(BaseRustSearchEngine):
+class RustThunderEngine(BaseRustEngine):
     """Epsilon-greedy playout searcher (Thunder)."""
 
     def __init__(
@@ -297,7 +297,7 @@ class RustThunderEngine(BaseRustSearchEngine):
         return 0.5
 
 
-class RustMctsEngine(BaseRustSearchEngine):
+class RustMctsEngine(BaseRustEngine):
     """Monte Carlo Tree Search variant from rust-reversi."""
 
     def __init__(

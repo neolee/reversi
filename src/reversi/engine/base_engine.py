@@ -249,7 +249,7 @@ class BaseEngine(EngineInterface, ABC):
     def _analysis_loop(self, color: str, session_id: int):
         # Start with depth 2 for immediate feedback (Odd-Even effect mitigation: use even depths)
         current_depth = 2
-        max_depth = 12
+        max_depth = 10
 
         while self._analyzing:
             # Check if this session is still valid
