@@ -2,7 +2,7 @@
 
 Cross-platform Reversi with a Flet UI and pluggable AI engines.
 
-## Current Highlights
+## Main Features
 
 - Responsive GUI with marker-based valid move hints, undo-aware turn handling, and log pane streaming.
 - Text protocol (INIT/NEWGAME/PLAY/GENMOVE/UNDO/BOARD/VALID_MOVES/RESULT/PASS) between UI and engines.
@@ -14,19 +14,17 @@ Cross-platform Reversi with a Flet UI and pluggable AI engines.
 - Human players can enable per-color "Analysis Assist" sessions that spin up metadata-driven engines with `think_delay=0`, stream `ANALYSIS` overlays, and auto-stop on clicks, passes, undos, and loads so helpers never leak into gameplay.
 - Engine configuration is metadata-driven (`src/reversi/engine/metadata.py`) so the GUI dialog and CLI duel runner share the same parameter definitions; `src/reversi/engine/ai_player.py` exposes reusable `EngineSpec`/`EnginePlayer` helpers for automated play.
 
+### Run the GUI
+
 ```sh
-uv run main.py ui --size 8
+uv run main.py ui
 ```
 
 The GUI always boots with the default protocol engine and lets you pick per-color opponents from the sidebar dropdowns. Tap the gear icon next to **Black** or **White** to open the metadata-driven configuration dialog, then tweak depth/delay/epsilon/etc. as exposed by that engine's definition in `src/reversi/engine/metadata.py`. Board size remains configurable via `--size` (default 8).
 
 The Controls panel includes **Save** / **Load** buttons, and the replay toolbar under the board becomes active once a game ends or after you load a saved timeline.
 
-### Analysis Assist
-
-Each human color can toggle a background evaluator from the gear dialog. The UI caches a dedicated engine per signature (engine key + parameters), forces `think_delay=0`, mirrors the current board snapshot, and calls `start_analysis()` so iterative-deepening engines can stream updated `ANALYSIS` overlays. Sessions automatically stop when you play, pass, undo, start a new game, or load a timeline, keeping helper threads isolated from the main protocol engine.
-
-## Run Engine Duels from the CLI
+### Run Engine Duels from the CLI
 
 Use the duel command when you want fully automated match series without the GUI:
 
@@ -34,13 +32,17 @@ Use the duel command when you want fully automated match series without the GUI:
 uv run main.py duel \
   --size 8 \
   --games 4 \
-  --black-engine minimax --black-depth 4 --black-delay 0.0 \
+  --black-engine minimax --black-depth 5 --black-delay 0.0 \
   --white-engine rust-alpha --white-depth 5 --white-delay 0.1
 ```
 
 Each side takes its own engine/depth/delay parameters via the shared `EngineSpec` utilities.
 
-## Save / Load / Replay
+### Analysis Assist
+
+Each human color can toggle a background evaluator from the gear dialog. The UI caches a dedicated engine per signature (engine key + parameters), forces `think_delay=0`, mirrors the current board snapshot, and calls `start_analysis()` so iterative-deepening engines can stream updated `ANALYSIS` overlays. Sessions automatically stop when you play, pass, undo, start a new game, or load a timeline, keeping helper threads isolated from the main protocol engine.
+
+### Save / Load / Replay
 
 - **Save**: Click *Save* anytime to export the entire timeline (initial position plus each snapshot) as a JSON file.
 - **Load**: Click *Load* to pick a JSON save. The engine replays every move behind the scenes so you can continue exactly where you left off.
