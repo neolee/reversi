@@ -153,6 +153,10 @@ class BaseRustEngine(BaseEngine, ABC):
 
             # Build Rust board for the current state (after move and potential pass)
             current_turn_color = board_snapshot.current_player
+            if not board_snapshot.has_valid_move(current_turn_color):
+                score = self._get_terminal_score(board_snapshot, color)
+                results.append(((r, c), score))
+                continue
             rust_board = self._build_rust_board(board_snapshot, current_turn_color)
 
             try:
