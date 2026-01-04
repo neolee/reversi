@@ -20,3 +20,7 @@ class TrivialEngine(BaseEngine):
         _ = board_snapshot, color  # unused for the random baseline
         valid_moves = list(valid_moves)
         return random.choice(valid_moves) if valid_moves else None
+
+    def analyze(self, color: str) -> list[tuple[tuple[int, int], float]]:
+        """Trivial analysis returns empty scores."""
+        return []

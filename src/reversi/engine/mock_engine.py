@@ -19,3 +19,7 @@ class MockEngine(BaseEngine):
         _ = board_snapshot, color
         moves = list(valid_moves)
         return moves[0] if moves else None
+
+    def analyze(self, color: str) -> list[tuple[tuple[int, int], float]]:
+        """Mock analysis returns empty scores."""
+        return []

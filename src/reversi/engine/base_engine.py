@@ -152,9 +152,9 @@ class BaseEngine(EngineInterface, ABC):
             if transient_session and session_id == self._analysis_session_id:
                 self._analyzing = False
 
+    @abstractmethod
     def analyze(self, color: str) -> list[tuple[tuple[int, int], float]]:
         """Return a list of (move, score) tuples. Default implementation returns empty."""
-        return []
 
     # ------------------------------------------------------------------
     # AI execution
