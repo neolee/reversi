@@ -25,8 +25,7 @@ def get_executor() -> ProcessPoolExecutor:
     global _executor
     if _executor is None:
         with _executor_lock:
-            if _executor is None:
-                _executor = _create_executor()
+            _executor = _create_executor()
     return _executor
 
 

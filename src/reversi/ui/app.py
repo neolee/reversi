@@ -30,8 +30,16 @@ class ReversiApp:
             "WHITE": self._default_engine_config("rust-alpha"),
         }
         self.human_analysis_settings = {
-            "BLACK": {"enabled": False, "engine_key": "minimax", "params": self._default_engine_config("minimax")["params"]},
-            "WHITE": {"enabled": False, "engine_key": "minimax", "params": self._default_engine_config("minimax")["params"]},
+            "BLACK": {
+                "enabled": False,
+                "engine_key": "minimax",
+                "params": self._default_engine_config("minimax")["params"],
+            },
+            "WHITE": {
+                "enabled": False,
+                "engine_key": "minimax",
+                "params": self._default_engine_config("minimax")["params"],
+            },
         }
         self.engine_dialog = EngineConfigDialog(
             page_getter=lambda: self.page,
@@ -43,22 +51,21 @@ class ReversiApp:
 
         # Components
         self.board_component = BoardComponent(
-            board_size=board_size,
-            on_click_callback=self.on_board_click
+            board_size=board_size, on_click_callback=self.on_board_click
         )
 
         self.replay_controller = ReplayController(
             page_getter=lambda: self.page,
             apply_snapshot_callback=self._apply_snapshot,
             get_timeline_len_callback=lambda: len(self.timeline),
-            is_game_started_callback=lambda: self.game_started
+            is_game_started_callback=lambda: self.game_started,
         )
 
         self.persistence_manager = PersistenceManager(
             page_getter=lambda: self.page,
             get_save_payload_callback=self._build_save_payload,
             load_game_data_callback=self._apply_loaded_data,
-            log_callback=self.log
+            log_callback=self.log,
         )
 
         self.scoreboard_component = ScoreboardComponent()
@@ -70,7 +77,7 @@ class ReversiApp:
             on_player_mode_change=self.on_player_mode_change,
             on_configure_engine=self.on_configure_engine,
             on_save=self.persistence_manager.request_save,
-            on_load=self.persistence_manager.request_load
+            on_load=self.persistence_manager.request_load,
         )
 
         # UI State
@@ -95,7 +102,9 @@ class ReversiApp:
         self._board_area_padding_v = 16.0
         self._board_column_spacing = 16.0
         self.current_analysis_engine = None
-        self._analysis_engine_signature: tuple[str, tuple[tuple[str, object], ...]] | None = None
+        self._analysis_engine_signature: (
+            tuple[str, tuple[tuple[str, object], ...]] | None
+        ) = None
         self._is_shutting_down = False
         self._shutdown_dialog: ft.AlertDialog | None = None
 
@@ -123,7 +132,9 @@ class ReversiApp:
         scoreboard = self.scoreboard_component.create()
         replay_toolbar = self.replay_controller.create_toolbar()
 
-        initial_board_size = self.board_size * self.board_component.cell_size + self.board_padding * 2
+        initial_board_size = (
+            self.board_size * self.board_component.cell_size + self.board_padding * 2
+        )
         self.board_wrapper = ft.Container(
             content=board_grid,
             width=initial_board_size,
@@ -134,14 +145,14 @@ class ReversiApp:
             gradient=ft.LinearGradient(
                 begin=ft.alignment.top_left,
                 end=ft.alignment.bottom_right,
-                colors=["#0f3d14", "#145a1e"]
+                colors=["#0f3d14", "#145a1e"],
             ),
             shadow=ft.BoxShadow(
                 blur_radius=25,
                 spread_radius=2,
                 color="rgba(0,0,0,0.25)",
-                offset=ft.Offset(0, 12)
-            )
+                offset=ft.Offset(0, 12),
+            ),
         )
 
         self.board_stage = ft.Container(
@@ -164,19 +175,15 @@ class ReversiApp:
                 horizontal=self._board_area_padding_h,
                 vertical=self._board_area_padding_v,
             ),
-            bgcolor="grey200"
+            bgcolor="grey200",
         )
 
         # Layout
         page.add(
             ft.Row(
-                [
-                    sidebar,
-                    ft.VerticalDivider(width=1),
-                    self.board_area
-                ],
+                [sidebar, ft.VerticalDivider(width=1), self.board_area],
                 expand=True,
-                vertical_alignment=ft.CrossAxisAlignment.STRETCH
+                vertical_alignment=ft.CrossAxisAlignment.STRETCH,
             )
         )
 
@@ -220,7 +227,11 @@ class ReversiApp:
             config = self.human_analysis_settings.get(color)
             if not config:
                 # Should be initialized in __init__, but just in case
-                config = {"enabled": False, "engine_key": "minimax", "params": self._default_engine_config("minimax")["params"]}
+                config = {
+                    "enabled": False,
+                    "engine_key": "minimax",
+                    "params": self._default_engine_config("minimax")["params"],
+                }
                 self.human_analysis_settings[color] = config
         else:
             config = self.ai_engine_settings.get(color)
@@ -233,7 +244,9 @@ class ReversiApp:
     # ------------------------------------------------------------------
     # Layout & Resizing
     # ------------------------------------------------------------------
-    def adjust_board_size(self, width: float | None = None, height: float | None = None):
+    def adjust_board_size(
+        self, width: float | None = None, height: float | None = None
+    ):
         if not self.page or not self.board_wrapper:
             return
 
@@ -243,8 +256,12 @@ class ReversiApp:
             return
 
         sidebar_container = self.controls_component.container
-        sidebar_width = float(sidebar_container.width) if sidebar_container and sidebar_container.width else 0.0
-        padding_value = getattr(self.page, "padding", 0) # padding may be None
+        sidebar_width = (
+            float(sidebar_container.width)
+            if sidebar_container and sidebar_container.width
+            else 0.0
+        )
+        padding_value = getattr(self.page, "padding", 0)  # padding may be None
         page_padding = float(padding_value)
         divider_width = 1.0
         safety_margin = 36.0
@@ -275,7 +292,11 @@ class ReversiApp:
         current_height = float(self.board_wrapper.height or 0)
         current_cell_size = self.board_component.cell_size
 
-        if abs(new_cell_size - current_cell_size) < 0.5 and abs(current_width - board_pixel) < 0.5 and abs(current_height - board_pixel) < 0.5:
+        if (
+            abs(new_cell_size - current_cell_size) < 0.5
+            and abs(current_width - board_pixel) < 0.5
+            and abs(current_height - board_pixel) < 0.5
+        ):
             return
 
         self.board_wrapper.width = board_pixel
@@ -286,7 +307,7 @@ class ReversiApp:
     def _handle_resize_event(self, _: ft.ControlEvent):
         if not self.page:
             return
-        
+
         width = self.page.width
         height = self.page.height
         if width and height:
@@ -370,7 +391,9 @@ class ReversiApp:
         elif cmd == Response.MOVE:
             if len(parts) > 1:
                 coord = parts[1]
-                move_color = self._engine_request_color or self._opponent_color(self.current_turn)
+                move_color = self._engine_request_color or self._opponent_color(
+                    self.current_turn
+                )
                 self._pending_move_context = {
                     "color": move_color,
                     "coord": coord,
@@ -387,20 +410,27 @@ class ReversiApp:
             if winner == "DRAW":
                 self.scoreboard_component.set_status(
                     f"Draw! {self.latest_scores['BLACK']} - {self.latest_scores['WHITE']}",
-                    color="#1b5e20"
+                    color="#1b5e20",
                 )
             else:
                 pretty = self._color_label(winner)
                 self.scoreboard_component.set_status(
                     f"{pretty} wins! {self.latest_scores['BLACK']} - {self.latest_scores['WHITE']}",
-                    color="#b71c1c"
+                    color="#b71c1c",
                 )
 
         elif cmd == Response.PASS:
             color = parts[1] if len(parts) > 1 else "UNKNOWN"
             opponent = "WHITE" if color == "BLACK" else "BLACK"
-            if not self._pending_move_context or self._pending_move_context.get("type") != "pass":
-                self._pending_move_context = {"color": color, "coord": None, "type": "pass"}
+            if (
+                not self._pending_move_context
+                or self._pending_move_context.get("type") != "pass"
+            ):
+                self._pending_move_context = {
+                    "color": color,
+                    "coord": None,
+                    "type": "pass",
+                }
             self._pending_status_message = f"{self._color_label(color)} passes. {self._color_label(opponent)} to move."
 
         elif cmd == Response.ANALYSIS:
@@ -426,7 +456,7 @@ class ReversiApp:
                 idx = r * size + c
                 if idx < len(state_str):
                     char = state_str[idx]
-                    coord = f"{chr(65+c)}{r+1}"
+                    coord = f"{chr(65 + c)}{r + 1}"
                     if char == "B":
                         self.board_component.update_piece(coord, "BLACK")
                     elif char == "W":
@@ -450,7 +480,11 @@ class ReversiApp:
         self.log("GUI: Sending UNDO")
         undo_count = 1
         opponent = self._opponent_color(self.current_turn)
-        if self.game_started and self._is_human_player(self.current_turn) and self._is_engine_player(opponent):
+        if (
+            self.game_started
+            and self._is_human_player(self.current_turn)
+            and self._is_engine_player(opponent)
+        ):
             undo_count = 2
         self.undo_expect_updates = undo_count
         for _ in range(undo_count):
@@ -465,13 +499,19 @@ class ReversiApp:
             return
 
         if not self.board_component.is_valid_move(coord):
-            self.log(f"Warning: Invalid move {coord}. Please choose a highlighted cell.")
+            self.log(
+                f"Warning: Invalid move {coord}. Please choose a highlighted cell."
+            )
             return
 
         # Stop analysis immediately on click
         self._stop_current_analysis()
 
-        self._pending_move_context = {"color": self.current_turn, "coord": coord, "type": "move"}
+        self._pending_move_context = {
+            "color": self.current_turn,
+            "coord": coord,
+            "type": "move",
+        }
         self.log(f"GUI: Clicked {coord}")
         self.board_component.highlight_valid_moves([])
         self.board_component.clear_analysis()
@@ -487,7 +527,11 @@ class ReversiApp:
         self.log("GUI: Requesting PASS")
         self.controls_component.set_pass_disabled(True)
         self.board_component.clear_analysis()
-        self._pending_move_context = {"color": self.current_turn, "coord": None, "type": "pass"}
+        self._pending_move_context = {
+            "color": self.current_turn,
+            "coord": None,
+            "type": "pass",
+        }
         self.engine.send_command(f"{Command.PASS} {self.current_turn}")
 
     def update_scores_from_state(self, state_str: str):
@@ -567,7 +611,9 @@ class ReversiApp:
         self.board_component.clear_analysis()
 
         if not self.game_started:
-            self.scoreboard_component.set_status(f"Replay: move {index} / {len(self.timeline) - 1}")
+            self.scoreboard_component.set_status(
+                f"Replay: move {index} / {len(self.timeline) - 1}"
+            )
 
         self.replay_controller.sync_index(index)
 
@@ -637,8 +683,9 @@ class ReversiApp:
             return
 
         try:
-            engine_key = resolve_engine_key(config.get("engine_key", "minimax"))
-            params = dict(config.get("params", {}))
+            engine_key = resolve_engine_key(str(config.get("engine_key", "minimax")))
+            params_raw = config.get("params", {})
+            params = dict(params_raw) if isinstance(params_raw, dict) else {}
 
             # Force think_delay to 0 for analysis
             params["think_delay"] = 0.0
@@ -659,7 +706,9 @@ class ReversiApp:
                 self._analysis_engine_signature = signature
 
             # Update board state
-            board = board_from_state_string(self.board_size, self.current_board_state_str, self.current_turn)
+            board = board_from_state_string(
+                self.board_size, self.current_board_state_str, self.current_turn
+            )
             if hasattr(self.current_analysis_engine, "board"):
                 self.current_analysis_engine.board = board
 
@@ -722,7 +771,13 @@ class ReversiApp:
     def _engine_label(self, engine_key: str) -> str:
         return get_engine_metadata(engine_key).label
 
-    def _handle_engine_dialog_save(self, color: str, engine_key: str, params: dict[str, object], enabled: bool = True):
+    def _handle_engine_dialog_save(
+        self,
+        color: str,
+        engine_key: str,
+        params: dict[str, object],
+        enabled: bool = True,
+    ):
         if not color:
             return
 
@@ -764,7 +819,9 @@ class ReversiApp:
         except Exception:
             self.log("Analysis engine shutdown warning")
 
-    def _build_analysis_signature(self, engine_key: str, params: dict[str, object]) -> tuple[str, tuple[tuple[str, object], ...]]:
+    def _build_analysis_signature(
+        self, engine_key: str, params: dict[str, object]
+    ) -> tuple[str, tuple[tuple[str, object], ...]]:
         return (engine_key, tuple(sorted(params.items())))
 
     # ------------------------------------------------------------------
