@@ -37,13 +37,10 @@ class PersistenceManager:
         self.log(f"GUI: Save requested (timeline entries: {len(timeline)})")
         default_name = self._build_default_filename(payload)
 
-        page = self.get_page()
-        initial_dir = page.client_storage.get("last_picker_path") if page else None
-
         self.save_picker.save_file(
             file_name=default_name,
             allowed_extensions=["json"],
-            initial_directory=initial_dir,
+            initial_directory=self._ensure_initial_dir(),
         )
 
     def request_load(self, e):
@@ -51,13 +48,10 @@ class PersistenceManager:
             return
         self.log("GUI: Load requested")
 
-        page = self.get_page()
-        initial_dir = page.client_storage.get("last_picker_path") if page else None
-
         self.load_picker.pick_files(
             allow_multiple=False,
             allowed_extensions=["json"],
-            initial_directory=initial_dir,
+            initial_directory=self._ensure_initial_dir(),
         )
 
     def _handle_save_dialog(self, e: ft.FilePickerResultEvent):
@@ -138,6 +132,18 @@ class PersistenceManager:
         player_one = self._player_tag(payload, "BLACK")
         player_two = self._player_tag(payload, "WHITE")
         return f"{player_one}-vs-{player_two}-{timestamp}.json"
+
+    def _ensure_initial_dir(self) -> str:
+        page = self.get_page()
+        if page:
+            try:
+                initial_dir = page.client_storage.get("last_picker_path")
+            except json.JSONDecodeError:
+                initial_dir = None
+        else:
+            initial_dir = None
+
+        return initial_dir or os.path.expanduser("~")
 
     def _player_tag(self, payload: dict, color: str) -> str:
         modes = payload.get("player_modes") if isinstance(payload, dict) else None
