@@ -7,12 +7,12 @@
 
 ## 1. 模块设计方案
 
-### A. 主窗口 ([src/reversi/ui-flet/app.py](src/reversi/ui-flet/app.py))
+### A. 主窗口 ([src/reversi/ui/app.py](src/reversi/ui/app.py))
 - **基类**：`QMainWindow`。
 - **布局**：使用 `QHBoxLayout` 作为主容器。左侧为固定宽度的 `Sidebar`，右侧为自适应缩放的 `BoardArea`。
 - **消息队列**：通过 `qasync` 将引擎的 `ANALYSIS` / `BOARD` / `VALID_MOVES` 等异步消息转化为 Qt Signals 派发到各组件。
 
-### B. 棋盘组件 ([src/reversi/ui-flet/components/board.py](src/reversi/ui-flet/components/board.py))
+### B. 棋盘组件 ([src/reversi/ui/components/board.py](src/reversi/ui/components/board.py))
 - **绘制核心**：实现一个 `BoardWidget`，重写 `resizeEvent` 以维持棋盘的正方形比例。
 - **下子交互**：将鼠标点击坐标转换为棋盘代数坐标（如 "D4"）并向 `ProtocolInterface` 发送指令。
 - **视觉层级**：
@@ -20,7 +20,7 @@
   2. **提示层**：半透明小圆点（合法着法）和带有分数的辅助线。
   3. **棋子层**：使用 `QPainter.drawEllipse`，添加径向渐变（Radial Gradient）使棋子具有立体感。
 
-### C. 设置与引擎对话框 ([src/reversi/ui-flet/components/engine_dialog.py](src/reversi/ui-flet/components/engine_dialog.py))
+### C. 设置与引擎对话框 ([src/reversi/ui/components/engine_dialog.py](src/reversi/ui/components/engine_dialog.py))
 - **动态 UI**：利用 `src/reversi/engine/metadata.py`。遍历 `engine_registry`，根据参数类型（Int, Float, Bool, Enum）动态创建 `QSpinBox`, `QDoubleSpinBox`, `QCheckBox`, `QComboBox`。
 - **联动**：切换引擎下拉框时，自动清空并重建下方配置表单。
 

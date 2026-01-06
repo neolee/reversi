@@ -6,8 +6,7 @@ from typing import Any, cast
 # Add src directory to python path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 
-import flet as ft
-from reversi.ui.app import ReversiApp
+from reversi.ui.app import run_app
 from reversi.engine.board import Board
 from reversi.engine.registry import (
     build_engine_instance,
@@ -24,8 +23,7 @@ DEFAULT_PROTOCOL_ENGINE = "minimax"
 def run_ui(args: argparse.Namespace) -> None:
     print(f"Starting UI with board size {args.size}...")
     engine = build_engine_instance(DEFAULT_PROTOCOL_ENGINE, board_size=args.size)
-    app = ReversiApp(engine, board_size=args.size)
-    ft.app(target=app.main)
+    run_app(engine, board_size=args.size)
 
 
 def _spec_label(engine_name: str, depth: int | None, delay: float | None) -> str:

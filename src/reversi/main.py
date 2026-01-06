@@ -1,12 +1,10 @@
-import flet as ft
-from reversi.ui.app import ReversiApp
+from reversi.ui.app import run_app
 from reversi.engine.mock_engine import MockEngine
 
 
 def main():
     engine = MockEngine()
-    app = ReversiApp(engine)
-    ft.app(target=app.main)
+    run_app(engine)
 
 
 if __name__ == "__main__":
