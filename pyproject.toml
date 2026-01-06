@@ -7,5 +7,7 @@ requires-python = ">=3.11"
 dependencies = [
     "flet==0.28.2",
     "flet-desktop==0.28.2",
+    "PySide6",
+    "qasync",
     "rust-reversi",
 ]
