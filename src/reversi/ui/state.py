@@ -14,12 +14,18 @@ class GameState:
 
     # Player configuration
     players: Dict[str, Dict[str, Any]] = field(default_factory=lambda: {
-        "BLACK": {"name": "Human", "is_human": True},
-        "WHITE": {"name": "Minimax", "is_human": False}
+        "BLACK": {"name": "Black", "is_human": True},
+        "WHITE": {"name": "White", "is_human": False}
     })
 
     ai_engine_settings: Dict[str, Dict[str, Any]] = field(default_factory=lambda: {
-        "WHITE": {"key": "minimax", "params": {"depth": 4}}
+        "BLACK": {"key": "minimax", "params": {"search_depth": 3, "think_delay": 0.2}},
+        "WHITE": {"key": "minimax", "params": {"search_depth": 4, "think_delay": 0.2}}
+    })
+
+    analysis_settings: Dict[str, Dict[str, Any]] = field(default_factory=lambda: {
+        "BLACK": {"enabled": False, "key": "minimax", "params": {}},
+        "WHITE": {"enabled": False, "key": "minimax", "params": {}}
     })
 
     def reset(self, board_size: int):

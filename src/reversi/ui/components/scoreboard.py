@@ -38,26 +38,6 @@ class ScoreboardWidget(QWidget):
         main_layout.addLayout(row1)
         main_layout.addLayout(row2)
 
-        self.setStyleSheet("""
-            #small_label {
-                font-size: 11px;
-                color: #888888;
-                font-weight: bold;
-                letter-spacing: 1px;
-            }
-            #player_label {
-                font-size: 18px;
-                font-weight: bold;
-                color: #333333;
-            }
-            #score_text {
-                font-size: 24px;
-                font-weight: 900;
-                color: #202020;
-                font-family: 'SF Mono', 'Courier New', monospace;
-            }
-        """)
-
     def update_scores(self, black, white):
         self.label_score.setText(f"{black} : {white}")
 

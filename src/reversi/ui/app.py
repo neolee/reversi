@@ -1,6 +1,6 @@
 import sys
 import asyncio
-from PySide6.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QWidget, QTextEdit, QPushButton, QHBoxLayout, QLabel, QFileDialog
+from PySide6.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QWidget, QTextEdit, QPushButton, QHBoxLayout, QLabel, QFileDialog, QComboBox
 from PySide6.QtCore import Qt, Signal, Slot
 from qasync import QEventLoop
 
@@ -10,21 +10,30 @@ from .components.board import BoardWidget
 from .components.scoreboard import ScoreboardWidget
 from .components.persistence import PersistenceManager
 from .components.replay import ReplayController
+from .components.engine_dialog import EngineConfigDialog
 from .components import game_state_serializer
 from .controller import EngineBroker
 from .state import GameState
 from .styles import get_main_stylesheet
 
+from reversi.engine.metadata import get_engine_metadata
+from reversi.engine.router_engine import RouterEngine
+
 class ReversiApp(QMainWindow):
     def __init__(self, engine: EngineInterface, board_size: int = 8):
         super().__init__()
         self.broker = EngineBroker(engine)
+        self.protocol_engine = engine # Reference for direct config
         self.state = GameState(board_size=board_size)
 
         self.setWindowTitle(f"Reversi {board_size}x{board_size} (PySide6)")
         self.resize(1080, 900)
 
+        # Initialize engine configs
+        self._sync_engine_configs()
+        
         # Components
+        self.engine_config_dialog = EngineConfigDialog(self)
         self.persistence_manager = PersistenceManager(
             self,
             self.get_save_payload,
@@ -41,6 +50,19 @@ class ReversiApp(QMainWindow):
         self._setup_ui()
         self._connect_signals()
         self.update_ui_state()
+
+    def _sync_engine_configs(self):
+        if not isinstance(self.protocol_engine, RouterEngine):
+            return
+            
+        for color in ["BLACK", "WHITE"]:
+            # Player config
+            config = self.state.ai_engine_settings[color]
+            self.protocol_engine.set_player_config(color, config["key"], config["params"])
+            
+            # Analysis config
+            a_config = self.state.analysis_settings[color]
+            self.protocol_engine.set_analysis_config(color, a_config["key"], a_config["params"])
 
     def _setup_ui(self):
         central_widget = QWidget()
@@ -66,10 +88,35 @@ class ReversiApp(QMainWindow):
         settings_header.setObjectName("section_header")
         sidebar_layout.addWidget(settings_header)
 
-        settings_box = QWidget()
-        settings_box.setMinimumHeight(80)
-        settings_box.setStyleSheet("background: #e0e0e0; border-radius: 8px; border: 1px dashed #bbb;")
-        sidebar_layout.addWidget(settings_box)
+        # 2. Player Controls
+        self.player_rows = {}
+        for color in ["BLACK", "WHITE"]:
+            row = QWidget()
+            row_layout = QHBoxLayout(row)
+            row_layout.setContentsMargins(0, 0, 0, 0)
+            row_layout.setSpacing(10)
+            
+            color_label = QLabel(color)
+            # color_label.setFixedWidth(50)
+            color_label.setObjectName("color_label")
+            
+            combo = QComboBox()
+            combo.addItems(["Human", "Engine"])
+            combo.setCurrentText("Human" if self.state.players[color]["is_human"] else "Engine")
+            combo.currentTextChanged.connect(lambda text, c=color: self.on_player_type_changed(c, text))
+            
+            settings_btn = QPushButton("⚙︎")
+            settings_btn.setObjectName("settings_button")
+            settings_btn.setFixedSize(40, 40)
+            settings_btn.setToolTip("Configure Player")
+            settings_btn.clicked.connect(lambda checked=False, c=color: self.open_engine_config(c))
+            
+            row_layout.addWidget(color_label)
+            row_layout.addWidget(combo, 1)
+            row_layout.addWidget(settings_btn)
+            
+            self.player_rows[color] = {"combo": combo, "btn": settings_btn}
+            sidebar_layout.addWidget(row)
 
         sidebar_layout.addSpacing(10)
 
@@ -86,6 +133,7 @@ class ReversiApp(QMainWindow):
         actions_layout.setSpacing(8)
 
         row1 = QHBoxLayout()
+        row1.setSpacing(10)
         self.undo_btn = QPushButton("Undo")
         self.undo_btn.setObjectName("action_button")
         self.undo_btn.clicked.connect(self.undo_move)
@@ -96,6 +144,7 @@ class ReversiApp(QMainWindow):
         row1.addWidget(self.pass_btn)
 
         row2 = QHBoxLayout()
+        row2.setSpacing(10)
         self.save_btn = QPushButton("Save")
         self.save_btn.setObjectName("action_button")
         self.save_btn.clicked.connect(self.persistence_manager.request_save)
@@ -193,7 +242,7 @@ class ReversiApp(QMainWindow):
             p_config = self.state.players.get(self.state.current_turn, {})
             if p_config.get("is_human"):
                 self.send_command(Command.VALID_MOVES)
-                self.send_command(f"{Command.ANALYZE} {self.state.current_turn}")
+                self._check_start_analysis(self.state.current_turn)
             else:
                 self.send_command(f"{Command.GENMOVE} {self.state.current_turn}")
 
@@ -227,6 +276,7 @@ class ReversiApp(QMainWindow):
             ai_color="WHITE",
             player_modes={k: ("human" if v["is_human"] else "engine") for k,v in self.state.players.items()},
             ai_engine_settings=self.state.ai_engine_settings,
+            analysis_settings=self.state.analysis_settings,
             timeline=self.state.timeline
         )
         return game_state_serializer.serialize(snapshot)
@@ -247,9 +297,23 @@ class ReversiApp(QMainWindow):
 
             # Map player modes
             for color, mode in loaded.player_modes.items():
-                self.state.players[color]["is_human"] = (mode == "human")
+                is_human = (mode == "human")
+                self.state.players[color]["is_human"] = is_human
+                # Update UI dropdown
+                self.player_rows[color]["combo"].blockSignals(True)
+                self.player_rows[color]["combo"].setCurrentText("Human" if is_human else "Engine")
+                self.player_rows[color]["combo"].blockSignals(False)
 
             self.state.ai_engine_settings = loaded.ai_engine_settings
+            self.state.analysis_settings = loaded.analysis_settings
+            
+            # Sync engine
+            self._sync_engine_configs()
+
+            # Update names
+            for color in ["BLACK", "WHITE"]:
+                self._update_player_name(color)
+
             self.scoreboard.set_players(self.state.players["BLACK"]["name"], self.state.players["WHITE"]["name"])
 
             if self.state.timeline:
@@ -301,9 +365,64 @@ class ReversiApp(QMainWindow):
         self.scoreboard.update_scores(black_count, white_count)
 
     def handle_board_click(self, coord):
-        if not self.state.game_started or self.state.current_turn != "BLACK":
+        if not self.state.game_started or not self.state.players[self.state.current_turn]["is_human"]:
             return
         self.send_command(f"{Command.PLAY} {coord}")
+
+    def on_player_type_changed(self, color, text):
+        is_human = (text == "Human")
+        self.state.players[color]["is_human"] = is_human
+        self._update_player_name(color)
+        
+        # If toggled mid-game and it's currently that player's turn, trigger action
+        if self.state.game_started and self.state.current_turn == color:
+            if not is_human:
+                self.send_command(f"{Command.GENMOVE} {color}")
+            else:
+                self.send_command(Command.VALID_MOVES)
+                self._check_start_analysis(color)
+        
+        self.update_ui_state()
+
+    def open_engine_config(self, color):
+        is_human = self.state.players[color]["is_human"]
+        config = self.state.analysis_settings[color] if is_human else self.state.ai_engine_settings[color]
+        
+        self.engine_config_dialog.load_config(color, is_human, config)
+        if self.engine_config_dialog.exec():
+            new_config = self.engine_config_dialog.get_config()
+            if is_human:
+                self.state.analysis_settings[color] = new_config
+            else:
+                self.state.ai_engine_settings[color] = new_config
+            
+            self._update_player_name(color)
+            self._sync_engine_configs()
+            self.log(f"System: Updated {color} configuration")
+            
+            # Restart analysis if necessary
+            if self.state.game_started and self.state.current_turn == color and is_human:
+                self._check_start_analysis(color)
+
+    def _update_player_name(self, color):
+        if self.state.players[color]["is_human"]:
+            self.state.players[color]["name"] = "Human"
+        else:
+            engine_key = self.state.ai_engine_settings[color]["key"]
+            meta = get_engine_metadata(engine_key)
+            self.state.players[color]["name"] = meta.label
+            
+        # Update scoreboard if applicable
+        if self.state.current_turn == color:
+            p = self.state.players[color]
+            self.scoreboard.set_status(color, p["name"], p["is_human"])
+
+    def _check_start_analysis(self, color):
+        # Stop any previous analysis first
+        self.board_widget.set_analysis({})
+        
+        if self.state.players[color]["is_human"] and self.state.analysis_settings[color]["enabled"]:
+            self.send_command(f"{Command.ANALYZE} {color}")
 
     def start_new_game(self):
         self.state.reset(self.state.board_size)
@@ -321,6 +440,8 @@ class ReversiApp(QMainWindow):
             self.log("System: Cannot undo when game is not active.")
             return
 
+        # Simplified undo logic: if human vs engine and it's human turn, undo 2 steps
+        # to get back to human's previous turn. Otherwise undo 1 step.
         other_turn = "WHITE" if self.state.current_turn == "BLACK" else "BLACK"
         is_human_vs_ai = (self.state.players[self.state.current_turn]["is_human"] != self.state.players[other_turn]["is_human"])
 
@@ -336,6 +457,9 @@ class ReversiApp(QMainWindow):
         for _ in range(undo_count):
             self.send_command(Command.UNDO)
         self.log(f"Undo requested ({undo_count} steps)")
+        
+        # Stop analysis when undoing
+        self.board_widget.set_analysis({})
 
     def update_ui_state(self):
         is_human_turn = self.state.players.get(self.state.current_turn, {}).get("is_human", False)

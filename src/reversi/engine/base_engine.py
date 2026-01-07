@@ -69,7 +69,7 @@ class BaseEngine(EngineInterface, ABC):
             self._emit_valid_moves(color)
         elif cmd == Command.ANALYZE:
             color = parts[1] if len(parts) > 1 else self.board.current_player
-            self._handle_analyze(color)
+            self.start_analysis(color)
         elif cmd == Command.PASS:
             color = parts[1] if len(parts) > 1 else self.board.current_player
             self._handle_pass(color)
@@ -93,6 +93,7 @@ class BaseEngine(EngineInterface, ABC):
             self._emit(f"{Response.ERROR} Missing coordinate")
             return
 
+        self.stop_analysis()
         coord = parts[1]
         try:
             r, c = Board.str_to_coord(coord)
@@ -107,9 +108,11 @@ class BaseEngine(EngineInterface, ABC):
             self._emit(f"{Response.ERROR} Invalid coordinate format")
 
     def _handle_genmove(self, color: str):
+        self.stop_analysis()
         threading.Thread(target=self._run_ai_turn, args=(color,), daemon=True).start()
 
     def _handle_undo(self):
+        self.stop_analysis()
         if self.board.undo():
             self._emit(Response.OK)
             self._emit_board_update()
@@ -144,6 +147,8 @@ class BaseEngine(EngineInterface, ABC):
         if self.board.has_valid_move(color):
             self._emit(f"{Response.ERROR} Moves available for {color}")
             return
+            
+        self.stop_analysis()
         if self.board.pass_turn(color):
             self._emit(Response.OK)
             self._emit_board_update()

@@ -21,6 +21,7 @@ class GameStateSnapshot:
     ai_color: str
     player_modes: Dict[str, str]
     ai_engine_settings: EngineSettings
+    analysis_settings: EngineSettings
     timeline: List[TimelineEntry]
 
 
@@ -29,6 +30,7 @@ class LoadedGameState:
     timeline: List[TimelineEntry]
     player_modes: Dict[str, str]
     ai_engine_settings: EngineSettings
+    analysis_settings: EngineSettings
 
 
 def serialize(snapshot: GameStateSnapshot) -> JSONDict:
@@ -39,6 +41,7 @@ def serialize(snapshot: GameStateSnapshot) -> JSONDict:
         "ai_color": snapshot.ai_color,
         "player_modes": dict(snapshot.player_modes),
         "ai_engine_settings": _clone_engine_settings(snapshot.ai_engine_settings),
+        "analysis_settings": _clone_engine_settings(snapshot.analysis_settings),
         "timeline": copy.deepcopy(snapshot.timeline),
     }
 
@@ -57,16 +60,26 @@ def deserialize(
 
     timeline = _normalize_timeline(data.get("timeline"))
     player_modes = _extract_player_modes(data)
+    
+    # Merge Engine Settings
     ai_engine_settings = _merge_engine_settings(
         data.get("ai_engine_settings"),
         default_engine_provider,
         fallback_engine_keys or {"BLACK": "minimax", "WHITE": "rust-alpha"},
+    )
+    
+    # Merge Analysis Settings
+    analysis_settings = _merge_engine_settings(
+        data.get("analysis_settings"),
+        default_engine_provider,
+        fallback_engine_keys or {"BLACK": "minimax", "WHITE": "minimax"},
     )
 
     return LoadedGameState(
         timeline=timeline,
         player_modes=player_modes,
         ai_engine_settings=ai_engine_settings,
+        analysis_settings=analysis_settings
     )
 
 

@@ -8,6 +8,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 
 from reversi.ui.app import run_app
 from reversi.engine.board import Board
+from reversi.engine.router_engine import RouterEngine
 from reversi.engine.registry import (
     build_engine_instance,
     engine_supports_depth,
@@ -17,12 +18,11 @@ from reversi.cli.duel import EngineSpec, run_duel_series
 
 
 ENGINE_NAMES = sorted(get_engine_choices().keys())
-DEFAULT_PROTOCOL_ENGINE = "minimax"
 
 
 def run_ui(args: argparse.Namespace) -> None:
     print(f"Starting UI with board size {args.size}...")
-    engine = build_engine_instance(DEFAULT_PROTOCOL_ENGINE, board_size=args.size)
+    engine = RouterEngine(board_size=args.size)
     run_app(engine, board_size=args.size)
 
 
