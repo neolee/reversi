@@ -25,6 +25,12 @@ class ReversiApp(QMainWindow):
         self._score_black = 2
         self._score_white = 2
 
+        # Player configuration (will be managed by sidebar later)
+        self.players = {
+            "BLACK": {"name": "Human", "is_human": True},
+            "WHITE": {"name": "Minimax", "is_human": False}
+        }
+
         # UI Setup
         central_widget = QWidget()
         central_widget.setObjectName("central_widget")
@@ -88,6 +94,7 @@ class ReversiApp(QMainWindow):
         right_layout.setSpacing(10)
 
         self.scoreboard = ScoreboardWidget()
+        self.scoreboard.set_players(self.players["BLACK"]["name"], self.players["WHITE"]["name"])
         right_layout.addWidget(self.scoreboard)
 
         self.board_widget = BoardWidget(board_size)
@@ -120,7 +127,9 @@ class ReversiApp(QMainWindow):
                 state_str = parts[3]
                 self.current_turn = turn
                 self.update_board_ui(size, state_str)
-                self.scoreboard.set_status(f"{turn}'s Turn")
+
+                player = self.players[turn]
+                self.scoreboard.set_status(turn, player["name"], player["is_human"])
 
                 if self.game_started and self.current_turn == "WHITE":
                     self.send_command(f"{Command.GENMOVE} WHITE")
@@ -152,19 +161,29 @@ class ReversiApp(QMainWindow):
         elif cmd == Response.RESULT:
             self.game_started = False
             self.log(f"Game Over: {parts[1]}")
-            self.scoreboard.set_status(f"Winner: {parts[1]}")
+            self.scoreboard.set_status_text(f"Winner: {parts[1]}")
 
     def update_board_ui(self, size, state_str):
         state = {}
         idx = 0
+        black_count = 0
+        white_count = 0
         for r in range(size):
             for c in range(size):
                 char = state_str[idx]
                 coord = f"{chr(65+c)}{r+1}"
-                if char == 'B': state[coord] = "BLACK"
-                elif char == 'W': state[coord] = "WHITE"
+                if char == 'B':
+                    state[coord] = "BLACK"
+                    black_count += 1
+                elif char == 'W':
+                    state[coord] = "WHITE"
+                    white_count += 1
                 idx += 1
+
         self.board_widget.set_state(state)
+        self._score_black = black_count
+        self._score_white = white_count
+        self.scoreboard.update_scores(black_count, white_count)
 
     def handle_board_click(self, coord):
         if not self.game_started or self.current_turn != "BLACK":
