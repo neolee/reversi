@@ -24,6 +24,7 @@ class ReversiApp(QMainWindow):
         self.game_started = False
         self._score_black = 2
         self._score_white = 2
+        self.undo_expect_updates = 0
 
         # Player configuration (will be managed by sidebar later)
         self.players = {
@@ -131,6 +132,13 @@ class ReversiApp(QMainWindow):
                 player = self.players[turn]
                 self.scoreboard.set_status(turn, player["name"], player["is_human"])
 
+                # If we are in the middle of an undo sequence, don't trigger AI turns
+                if self.undo_expect_updates > 0:
+                    self.undo_expect_updates -= 1
+                    if self.undo_expect_updates > 0:
+                        self.log("System: Waiting for second undo...")
+                        return
+
                 if self.game_started and self.current_turn == "WHITE":
                     self.send_command(f"{Command.GENMOVE} WHITE")
                 elif self.game_started and self.current_turn == "BLACK":
@@ -160,8 +168,12 @@ class ReversiApp(QMainWindow):
 
         elif cmd == Response.RESULT:
             self.game_started = False
-            self.log(f"Game Over: {parts[1]}")
-            self.scoreboard.set_status_text(f"Winner: {parts[1]}")
+            winner = parts[1]
+            self.log(f"Game Over: {winner}")
+            self.scoreboard.set_status_text(f"GAME OVER: WINNER IS {winner}")
+            # Clear helpers
+            self.board_widget.set_valid_moves([])
+            self.board_widget.set_analysis({})
 
     def update_board_ui(self, size, state_str):
         state = {}
@@ -192,14 +204,29 @@ class ReversiApp(QMainWindow):
 
     def start_new_game(self):
         self.game_started = True
+        self.board_widget.set_valid_moves([])
+        self.board_widget.set_analysis({})
         self.send_command(f"{Command.INIT} {self.board_size}")
         self.send_command(Command.NEWGAME)
         self.log("Started New Game")
 
     def undo_move(self):
-        self.send_command(Command.UNDO)
-        self.send_command(Command.UNDO)
-        self.log("Undo requested")
+        if not self.game_started:
+            self.log("System: Cannot undo when game is not active.")
+            return
+
+        # Determine undo count
+        other_turn = "WHITE" if self.current_turn == "BLACK" else "BLACK"
+        is_human_vs_ai = (self.players[self.current_turn]["is_human"] != self.players[other_turn]["is_human"])
+
+        undo_count = 1
+        if is_human_vs_ai and self.players[self.current_turn]["is_human"]:
+            undo_count = 2
+
+        self.undo_expect_updates = undo_count
+        for _ in range(undo_count):
+            self.send_command(Command.UNDO)
+        self.log(f"Undo requested ({undo_count} steps)")
 
     def send_command(self, cmd):
         self.engine.send_command(cmd)
