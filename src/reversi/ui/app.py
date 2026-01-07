@@ -53,7 +53,7 @@ class ReversiApp(QMainWindow):
                 border: 1px solid #d0d0d0;
                 border-radius: 4px;
                 font-family: 'SF Mono', 'Courier New', monospace;
-                font-size: 11px;
+                font-size: 9px;
             }
             QPushButton {
                 background-color: #e8e8e8;
@@ -120,6 +120,12 @@ class ReversiApp(QMainWindow):
         if not parts: return
 
         cmd = parts[0]
+
+        # Log move and analysis responses
+        if cmd == Response.MOVE:
+            self.log(f"Engine: {message}")
+        elif cmd == Response.ANALYSIS:
+            self.log(f"Engine: ANALYSIS received ({len(parts)-1} scores)")
 
         if cmd == Response.BOARD:
             if len(parts) >= 4:
@@ -229,6 +235,9 @@ class ReversiApp(QMainWindow):
         self.log(f"Undo requested ({undo_count} steps)")
 
     def send_command(self, cmd):
+        # Log move and analysis requests
+        if cmd.startswith(Command.PLAY) or cmd.startswith(Command.GENMOVE) or cmd.startswith(Command.ANALYZE):
+            self.log(f"GUI: Sending {cmd}")
         self.engine.send_command(cmd)
 
     def closeEvent(self, event):
