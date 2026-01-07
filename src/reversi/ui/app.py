@@ -1,6 +1,6 @@
 import sys
 import asyncio
-from PySide6.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QWidget, QTextEdit, QPushButton, QHBoxLayout
+from PySide6.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QWidget, QTextEdit, QPushButton, QHBoxLayout, QLabel, QFileDialog
 from PySide6.QtCore import Qt, Signal, Slot
 from qasync import QEventLoop
 
@@ -8,6 +8,10 @@ from reversi.protocol.interface import EngineInterface
 from reversi.protocol.constants import Command, Response
 from .components.board import BoardWidget
 from .components.scoreboard import ScoreboardWidget
+from .components.persistence import PersistenceManager
+from .components.replay import ReplayController
+from .components import game_state_serializer
+from reversi.engine.metadata import get_engine_metadata
 
 class ReversiApp(QMainWindow):
     message_received = Signal(str)
@@ -17,7 +21,7 @@ class ReversiApp(QMainWindow):
         self.engine = engine
         self.board_size = board_size
         self.setWindowTitle(f"Reversi {board_size}x{board_size} (PySide6)")
-        self.resize(1100, 800)
+        self.resize(1180, 900)
 
         # State
         self.current_turn = "BLACK"
@@ -25,12 +29,31 @@ class ReversiApp(QMainWindow):
         self._score_black = 2
         self._score_white = 2
         self.undo_expect_updates = 0
+        self.timeline = []
+        self.current_valid_moves = []
 
         # Player configuration (will be managed by sidebar later)
         self.players = {
             "BLACK": {"name": "Human", "is_human": True},
             "WHITE": {"name": "Minimax", "is_human": False}
         }
+        self.ai_engine_settings = {
+            "WHITE": {"key": "minimax", "params": {"depth": 4}} # Placeholder
+        }
+
+        # Components
+        self.persistence_manager = PersistenceManager(
+            self,
+            self.get_save_payload,
+            self.load_game_data,
+            self.log
+        )
+
+        self.replay_controller = ReplayController(
+            self.apply_snapshot,
+            lambda: len(self.timeline),
+            lambda: self.game_started
+        )
 
         # UI Setup
         central_widget = QWidget()
@@ -44,6 +67,20 @@ class ReversiApp(QMainWindow):
             #central_widget {
                 background-color: #f5f5f5;
             }
+            #app_title {
+                font-size: 32px;
+                font-weight: 900;
+                color: #1B5E20;
+                margin-bottom: 5px;
+            }
+            #section_header {
+                font-size: 11px;
+                font-weight: bold;
+                color: #888;
+                margin-top: 15px;
+                margin-bottom: 5px;
+                letter-spacing: 1px;
+            }
             QLabel {
                 color: #202020;
             }
@@ -53,7 +90,7 @@ class ReversiApp(QMainWindow):
                 border: 1px solid #d0d0d0;
                 border-radius: 4px;
                 font-family: 'SF Mono', 'Courier New', monospace;
-                font-size: 9px;
+                font-size: 10px;
             }
             QPushButton {
                 background-color: #e8e8e8;
@@ -69,22 +106,97 @@ class ReversiApp(QMainWindow):
             QPushButton:pressed {
                 background-color: #cfcfcf;
             }
+            QPushButton:disabled {
+                background-color: #f0f0f0;
+                color: #bbbbbb;
+                border: 1px solid #e0e0e0;
+            }
+            #action_button {
+                font-size: 12px;
+                min-height: 24px;
+            }
+            #primary_button {
+                background-color: #2e7d32;
+                color: white;
+                border: none;
+                font-size: 12px;
+                min-height: 24px;
+            }
+            #primary_button:hover {
+                background-color: #388e3c;
+            }
+            #primary_button:disabled {
+                background-color: #a5d6a7;
+                color: #ffffff;
+            }
         """)
+
         sidebar = QWidget()
-        sidebar.setFixedWidth(300)
+        sidebar.setFixedWidth(280)
         sidebar_layout = QVBoxLayout(sidebar)
+        sidebar_layout.setContentsMargins(10, 10, 10, 10)
+
+        # 1. Header
+        title = QLabel("REVERSI")
+        title.setObjectName("app_title")
+        sidebar_layout.addWidget(title)
+
+        # 2. Game Settings Placeholder
+        settings_header = QLabel("GAME SETTINGS")
+        settings_header.setObjectName("section_header")
+        sidebar_layout.addWidget(settings_header)
+
+        settings_box = QWidget()
+        settings_box.setMinimumHeight(80)
+        settings_box.setStyleSheet("background: #e0e0e0; border-radius: 8px; border: 1px dashed #bbb;")
+        sidebar_layout.addWidget(settings_box)
+
+        sidebar_layout.addSpacing(10)
+
+        # 3. Primary Actions
+        self.btn_new_game = QPushButton("New Game")
+        self.btn_new_game.setObjectName("primary_button")
+        self.btn_new_game.clicked.connect(self.start_new_game)
+        sidebar_layout.addWidget(self.btn_new_game)
+
+        # 4. Secondary Actions (Grid)
+        actions_grid = QWidget()
+        actions_layout = QVBoxLayout(actions_grid)
+        actions_layout.setContentsMargins(0, 5, 0, 5)
+        actions_layout.setSpacing(8)
+
+        row1 = QHBoxLayout()
+        self.undo_btn = QPushButton("Undo")
+        self.undo_btn.setObjectName("action_button")
+        self.undo_btn.clicked.connect(self.undo_move)
+        self.pass_btn = QPushButton("Pass")
+        self.pass_btn.setObjectName("action_button")
+        self.pass_btn.clicked.connect(self.pass_turn)
+        row1.addWidget(self.undo_btn)
+        row1.addWidget(self.pass_btn)
+
+        row2 = QHBoxLayout()
+        self.save_btn = QPushButton("Save")
+        self.save_btn.setObjectName("action_button")
+        self.save_btn.clicked.connect(self.persistence_manager.request_save)
+        self.load_btn = QPushButton("Load")
+        self.load_btn.setObjectName("action_button")
+        self.load_btn.clicked.connect(self.persistence_manager.request_load)
+        row2.addWidget(self.save_btn)
+        row2.addWidget(self.load_btn)
+
+        actions_layout.addLayout(row1)
+        actions_layout.addLayout(row2)
+        sidebar_layout.addWidget(actions_grid)
+
+        # 5. Engine Log
+        log_header = QLabel("ENGINE LOG")
+        log_header.setObjectName("section_header")
+        sidebar_layout.addWidget(log_header)
 
         self.log_view = QTextEdit()
         self.log_view.setReadOnly(True)
-        sidebar_layout.addWidget(self.log_view)
-
-        btn_new_game = QPushButton("New Game")
-        btn_new_game.clicked.connect(self.start_new_game)
-        sidebar_layout.addWidget(btn_new_game)
-
-        btn_undo = QPushButton("Undo")
-        btn_undo.clicked.connect(self.undo_move)
-        sidebar_layout.addWidget(btn_undo)
+        sidebar_layout.addWidget(self.log_view, stretch=1)
 
         main_layout.addWidget(sidebar)
 
@@ -102,11 +214,17 @@ class ReversiApp(QMainWindow):
         self.board_widget.clicked.connect(self.handle_board_click)
         right_layout.addWidget(self.board_widget, stretch=1)
 
+        # Replay toolbar below board
+        right_layout.addWidget(self.replay_controller)
+
         main_layout.addWidget(right_area, stretch=1)
 
         # Engine setup
         self.engine.set_callback(self.on_engine_message)
         self.message_received.connect(self.process_message)
+
+        # Initial UI state update
+        self.update_ui_state()
 
     def log(self, text):
         self.log_view.append(text)
@@ -121,11 +239,22 @@ class ReversiApp(QMainWindow):
 
         cmd = parts[0]
 
-        # Log move and analysis responses
-        if cmd == Response.MOVE:
+        # 1. Broad logging of engine communication
+        if cmd in (Response.MOVE, Response.PASS, Response.READY, Response.RESULT):
             self.log(f"Engine: {message}")
+        elif cmd == Response.ERROR:
+            self.log(f"ERROR: {message}")
         elif cmd == Response.ANALYSIS:
             self.log(f"Engine: ANALYSIS received ({len(parts)-1} scores)")
+        elif cmd == Response.INFO:
+            # Info can be scores or other technical details
+            if not any(k in message for k in ["SCORE_BLACK", "SCORE_WHITE"]):
+                self.log(f"Engine: {message}")
+        # OK and BOARD are typically not logged to keep entries meaningful
+
+        # 2. Command processing
+        if cmd == Response.MOVE or cmd == Response.PASS:
+            self.current_valid_moves = []
 
         if cmd == Response.BOARD:
             if len(parts) >= 4:
@@ -138,12 +267,29 @@ class ReversiApp(QMainWindow):
                 player = self.players[turn]
                 self.scoreboard.set_status(turn, player["name"], player["is_human"])
 
-                # If we are in the middle of an undo sequence, don't trigger AI turns
+                # If we are in the middle of an undo sequence, don't trigger AI turns until it's finished
+                processed_undo = False
                 if self.undo_expect_updates > 0:
                     self.undo_expect_updates -= 1
                     if self.undo_expect_updates > 0:
-                        self.log("System: Waiting for second undo...")
+                        self.log("System: Waiting for second undo board update...")
                         return
+                    self.log("System: Undo completed")
+                    processed_undo = True
+                    self.replay_controller.sync_index(max(0, len(self.timeline) - 1))
+
+                # Capture timeline snapshot if game is active and we're not just reverting
+                if self.game_started and not processed_undo:
+                    snapshot = {
+                        "index": len(self.timeline),
+                        "board": state_str,
+                        "current_player": turn,
+                        "scores": {"BLACK": self._score_black, "WHITE": self._score_white}
+                    }
+                    self.timeline.append(snapshot)
+                    self.replay_controller.sync_index(len(self.timeline) - 1)
+
+                self.update_ui_state()
 
                 if self.game_started and self.current_turn == "WHITE":
                     self.send_command(f"{Command.GENMOVE} WHITE")
@@ -153,7 +299,9 @@ class ReversiApp(QMainWindow):
 
         elif cmd == Response.VALID_MOVES:
             moves = parts[1:]
+            self.current_valid_moves = moves
             self.board_widget.set_valid_moves(moves)
+            self.update_ui_state()
 
         elif cmd == Response.ANALYSIS:
             scores = {}
@@ -180,6 +328,87 @@ class ReversiApp(QMainWindow):
             # Clear helpers
             self.board_widget.set_valid_moves([])
             self.board_widget.set_analysis({})
+            self.update_ui_state()
+
+    def pass_turn(self):
+        if not self.game_started: return
+        self.send_command(f"{Command.PASS} {self.current_turn}")
+        self.log(f"GUI: {self.current_turn} passed")
+
+    def get_save_payload(self) -> dict:
+        snapshot = game_state_serializer.GameStateSnapshot(
+            board_size=self.board_size,
+            human_color="BLACK", # Simplified
+            ai_color="WHITE",
+            player_modes={k: ("human" if v["is_human"] else "engine") for k,v in self.players.items()},
+            ai_engine_settings=self.ai_engine_settings,
+            timeline=self.timeline
+        )
+        return game_state_serializer.serialize(snapshot)
+
+    def load_game_data(self, data: dict):
+        try:
+            # Clear current board before loading
+            self.board_widget.set_state({})
+            self.board_widget.set_valid_moves([])
+            self.board_widget.set_analysis({})
+
+            loaded = game_state_serializer.deserialize(
+                data,
+                board_size=self.board_size,
+                default_engine_provider=lambda key: {"key": key, "params": {}}, # Basic provider
+            )
+
+            self.timeline = loaded.timeline
+
+            # Map player modes
+            for color, mode in loaded.player_modes.items():
+                self.players[color]["is_human"] = (mode == "human")
+
+            self.ai_engine_settings = loaded.ai_engine_settings
+            self.scoreboard.set_players(self.players["BLACK"]["name"], self.players["WHITE"]["name"])
+
+            if self.timeline:
+                last_snapshot = self.timeline[-1]
+                # Check if game was already finished in the save file
+                # If board is full or no moves, it might be over.
+                # For now, let's assume if it was saved it might or might not be active.
+                # Standard behavior: resume if not obviously finished.
+                self.game_started = True
+
+                # Apply last state
+                self.apply_snapshot(len(self.timeline) - 1)
+
+                # If human's turn, request valid moves to enable input
+                if self.players[self.current_turn]["is_human"]:
+                    self.send_command(Command.VALID_MOVES)
+
+            self.log("System: Game loaded successfully")
+            self.update_ui_state()
+        except Exception as e:
+            self.log(f"Error loading game: {e}")
+
+    def apply_snapshot(self, index: int):
+        if not (0 <= index < len(self.timeline)):
+            return
+
+        snapshot = self.timeline[index]
+        self.replay_controller.sync_index(index)
+
+        # Sync the engine state
+        board_str = snapshot["board"]
+        turn = snapshot["current_player"]
+
+        # We tell the engine to FORCE set this board state
+        self.send_command(f"{Command.BOARD} {self.board_size} {turn} {board_str}")
+
+        # Update UI directly
+        self.current_turn = turn
+        self.update_board_ui(self.board_size, board_str)
+        # Re-update player status and button states
+        player = self.players[turn]
+        self.scoreboard.set_status(turn, player["name"], player["is_human"])
+        self.update_ui_state()
 
     def update_board_ui(self, size, state_str):
         state = {}
@@ -210,11 +439,16 @@ class ReversiApp(QMainWindow):
 
     def start_new_game(self):
         self.game_started = True
+        self.timeline = []
+        # Clear board display thoroughly
+        self.board_widget.set_state({})
         self.board_widget.set_valid_moves([])
         self.board_widget.set_analysis({})
+
         self.send_command(f"{Command.INIT} {self.board_size}")
         self.send_command(Command.NEWGAME)
         self.log("Started New Game")
+        self.update_ui_state()
 
     def undo_move(self):
         if not self.game_started:
@@ -230,9 +464,33 @@ class ReversiApp(QMainWindow):
             undo_count = 2
 
         self.undo_expect_updates = undo_count
+
+        # Truncate timeline
+        for _ in range(undo_count):
+            if self.timeline:
+                self.timeline.pop()
+
         for _ in range(undo_count):
             self.send_command(Command.UNDO)
         self.log(f"Undo requested ({undo_count} steps)")
+
+    def update_ui_state(self):
+        is_human_turn = self.players.get(self.current_turn, {}).get("is_human", False)
+        has_moves = len(self.timeline) > 0
+        is_undoing = self.undo_expect_updates > 0
+
+        # Undo is allowed if game is active AND it's human's turn AND we have moves AND not processing another undo
+        can_undo = self.game_started and is_human_turn and has_moves and not is_undoing
+        self.undo_btn.setEnabled(can_undo)
+
+        # Save is allowed if we have at least one move recorded
+        self.save_btn.setEnabled(has_moves)
+
+        # Pass is allowed if game is active AND it's human's turn AND human has NO legal moves
+        can_pass = self.game_started and is_human_turn and (len(self.current_valid_moves) == 0) and not is_undoing
+        self.pass_btn.setEnabled(can_pass)
+        self.replay_controller.setEnabled(not self.game_started)
+        self.replay_controller.update_status()
 
     def send_command(self, cmd):
         # Log move and analysis requests
