@@ -1,4 +1,4 @@
-from PySide6.QtCore import QObject, Signal, Slot
+from PySide6.QtCore import QObject, Signal, Slot, Qt
 from reversi.protocol.interface import EngineInterface
 from reversi.protocol.constants import Command, Response
 
@@ -20,7 +20,9 @@ class EngineBroker(QObject):
         super().__init__()
         self.engine = engine
         self.engine.set_callback(self.on_raw_message)
-        self.raw_message_received.connect(self.process_response)
+        # Use QueuedConnection to ensure that engine responses are processed in the 
+        # next event loop tick, preventing blocking the UI thread during a command chain.
+        self.raw_message_received.connect(self.process_response, Qt.ConnectionType.QueuedConnection)
 
     def on_raw_message(self, message: str):
         self.raw_message_received.emit(message)
