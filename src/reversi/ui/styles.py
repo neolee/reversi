@@ -44,7 +44,7 @@ def get_main_stylesheet():
             border: 1px solid #ced4da;
             border-radius: 6px;
             font-family: "SF Mono", "Menlo", "Monaco", "Cascadia Code", "Fira Code", "Consolas", "Courier New", monospace;
-            font-size: 11px;
+            font-size: 10px;
             padding: 5px;
         }
         QPushButton {
@@ -134,8 +134,8 @@ def get_main_stylesheet():
             border: 0px;
         }
         QComboBox::down-arrow {
-            width: 10px;
-            height: 10px;
+            width: 24px;
+            height: 24px;
         }
         #dialog_header {
             font-size: 18px;
@@ -170,8 +170,19 @@ def get_main_stylesheet():
             font-weight: 500;
         }
         QCheckBox::indicator {
-            width: 18px;
-            height: 18px;
+            width: 16px;
+            height: 16px;
+            border: 1px solid #adb5bd;
+            border-radius: 3px;
+            background-color: white;
+        }
+        QCheckBox::indicator:hover {
+            border-color: #2e7d32;
+        }
+        QCheckBox::indicator:checked {
+            background-color: #2e7d32;
+            border-color: #2e7d32;
+            image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'%3E%3C/polyline%3E%3C/svg%3E");
         }
         #color_label {
             font-weight: bold;
