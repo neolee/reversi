@@ -45,16 +45,16 @@ class Board:
     def is_valid_move(self, r: int, c: int, player: str) -> bool:
         if not self.is_on_board(r, c) or self.grid[r][c] is not None:
             return False
-        
+
         opponent = self.WHITE if player == self.BLACK else self.BLACK
-        
+
         # Check all 8 directions
         directions = [
             (-1, -1), (-1, 0), (-1, 1),
             (0, -1),           (0, 1),
             (1, -1),  (1, 0),  (1, 1)
         ]
-        
+
         for dr, dc in directions:
             nr, nc = r + dr, c + dc
             if self.is_on_board(nr, nc) and self.grid[nr][nc] == opponent:
@@ -80,22 +80,22 @@ class Board:
 
         self.grid[r][c] = player
         opponent = self.WHITE if player == self.BLACK else self.BLACK
-        
+
         directions = [
             (-1, -1), (-1, 0), (-1, 1),
             (0, -1),           (0, 1),
             (1, -1),  (1, 0),  (1, 1)
         ]
-        
+
         for dr, dc in directions:
             nr, nc = r + dr, c + dc
             pieces_to_flip = []
-            
+
             while self.is_on_board(nr, nc) and self.grid[nr][nc] == opponent:
                 pieces_to_flip.append((nr, nc))
                 nr += dr
                 nc += dc
-            
+
             if self.is_on_board(nr, nc) and self.grid[nr][nc] == player:
                 for fr, fc in pieces_to_flip:
                     self.grid[fr][fc] = player
@@ -164,3 +164,23 @@ class Board:
         copied.current_player = self.current_player
         copied.history = []
         return copied
+
+    def from_string(self, state_str: str, current_player: str):
+        """Update board state from a string (e.g., 'BBWW....')."""
+        if len(state_str) != self.size * self.size:
+            raise ValueError(f"State string length must be {self.size * self.size}")
+
+        idx = 0
+        for r in range(self.size):
+            for c in range(self.size):
+                char = state_str[idx]
+                if char == 'B':
+                    self.grid[r][c] = self.BLACK
+                elif char == 'W':
+                    self.grid[r][c] = self.WHITE
+                else:
+                    self.grid[r][c] = self.EMPTY
+                idx += 1
+
+        self.current_player = current_player
+        self.history = []  # Reset history on bulk update

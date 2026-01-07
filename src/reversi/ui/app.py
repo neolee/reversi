@@ -171,7 +171,13 @@ class ReversiApp(QMainWindow):
             self.replay_controller.sync_index(max(0, len(self.state.timeline) - 1))
 
         # Capture timeline snapshot if game is active and we're not just reverting
-        if self.state.game_started and not processed_undo:
+        # and it's not a duplicate of the last state (e.g. after load or undo)
+        is_duplicate = (
+            self.state.timeline and
+            self.state.timeline[-1]["board"] == state_str and
+            self.state.timeline[-1]["current_player"] == turn
+        )
+        if self.state.game_started and not processed_undo and not is_duplicate:
             snapshot = {
                 "index": len(self.state.timeline),
                 "board": state_str,
@@ -184,11 +190,12 @@ class ReversiApp(QMainWindow):
         self.update_ui_state()
 
         if self.state.game_started:
-            if self.state.current_turn == "WHITE":
-                self.send_command(f"{Command.GENMOVE} WHITE")
-            elif self.state.current_turn == "BLACK":
+            p_config = self.state.players.get(self.state.current_turn, {})
+            if p_config.get("is_human"):
                 self.send_command(Command.VALID_MOVES)
-                self.send_command(f"{Command.ANALYZE} BLACK")
+                self.send_command(f"{Command.ANALYZE} {self.state.current_turn}")
+            else:
+                self.send_command(f"{Command.GENMOVE} {self.state.current_turn}")
 
     def on_valid_moves_received(self, moves):
         self.state.current_valid_moves = moves
@@ -248,8 +255,6 @@ class ReversiApp(QMainWindow):
             if self.state.timeline:
                 self.state.game_started = True
                 self.apply_snapshot(len(self.state.timeline) - 1)
-                if self.state.players[self.state.current_turn]["is_human"]:
-                    self.send_command(Command.VALID_MOVES)
 
             self.log("System: Game loaded successfully")
             self.update_ui_state()

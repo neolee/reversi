@@ -60,7 +60,10 @@ class BaseEngine(EngineInterface, ABC):
         elif cmd == Command.UNDO:
             self._handle_undo()
         elif cmd == Command.BOARD:
-            self._emit_board_update()
+            if len(parts) >= 4:
+                self._handle_set_board(parts)
+            else:
+                self._emit_board_update()
         elif cmd == Command.VALID_MOVES:
             color = parts[1] if len(parts) > 1 else self.board.current_player
             self._emit_valid_moves(color)
@@ -75,10 +78,12 @@ class BaseEngine(EngineInterface, ABC):
     # Shared handlers
     # ------------------------------------------------------------------
     def _handle_init(self):
+        self.stop_analysis()
         self.board = Board(size=self.board_size)
         self._emit(Response.READY)
 
     def _handle_newgame(self):
+        self.stop_analysis()
         self.board = Board(size=self.board_size)
         self._emit(Response.OK)
         self._emit_board_update()
@@ -110,6 +115,22 @@ class BaseEngine(EngineInterface, ABC):
             self._emit_board_update()
         else:
             self._emit(f"{Response.ERROR} Cannot undo")
+
+    def _handle_set_board(self, parts):
+        if len(parts) < 4:
+            return
+
+        self.stop_analysis()
+        try:
+            # size = int(parts[1]) # We usually keep engine's size fixed or update it if needed
+            turn = parts[2]
+            state_str = parts[3]
+            self.board.from_string(state_str, turn)
+            self._emit(Response.OK)
+            self._emit_board_update()
+            self._check_game_state()
+        except Exception as e:
+            self._emit(f"{Response.ERROR} Failed to set board: {e}")
 
     def _emit_valid_moves(self, color: str):
         moves = self.board.get_valid_moves(color)
