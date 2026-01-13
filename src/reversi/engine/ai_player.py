@@ -37,7 +37,7 @@ class EnginePlayer:
         valid_moves = snapshot.get_valid_moves(color)
         if not valid_moves:
             return None
-        move = self._engine._pick_move(snapshot, color, valid_moves)  # type: ignore[attr-defined]
+        move = self._engine._pick_move(snapshot, color, valid_moves)
         return move if move in valid_moves else valid_moves[0]
 
 
