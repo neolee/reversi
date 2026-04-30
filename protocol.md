@@ -1,5 +1,7 @@
 # Reversi Engine Protocol
 
+**Protocol Version: 1.0** (last updated: 2026-04)
+
 This document describes the text-based communication protocol between the Reversi GUI and the Engine. The protocol is inspired by UCI (Universal Chess Interface) and GTP (Go Text Protocol).
 
 ## Overview
